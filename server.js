@@ -103,6 +103,6 @@ app.post('/newFile', async (req, res) => {
     }
 });
 
-server.listen(303:0, () => {
-    console.log('Listening on 3030')
+server.listen(9393, () => {
+    console.log('Listening on 9393')
 });
