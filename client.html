@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Instant Shit</title>
+    <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+</head>
+
+<body>
+    <div id="current-text" ></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.3.0/socket.io.js"></script>
+
+    <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
+    <script>
+        var mySocketId;
+        var editor = new Quill('#current-text', {
+            theme: 'snow'
+        });
+
+
+        editor.on('text-change', function (delta, oldDelta, source) {
+             if (source == 'user') {
+                socket.emit('txt_update', editor.getContents());
+            }
+        });
+
+        const socket = io();
+
+        socket.on('connect', () => {
+            console.info("connected with the server")
+        });
+        socket.on('my-id', (id) => {
+            console.info("my Id is :" + id);
+            mySocketId = id
+        });
+
+        socket.on("new_text", (txt) => {
+            if(txt.from === mySocketId) return;
+
+            editor.setContents(txt.val,"api")
+        })
+
+
+        function sendFile() {
+        }
+    </script>
+</body>
+
+</html>
