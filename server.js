@@ -48,7 +48,7 @@ var lastFileUpdate = Date.now();
 
 app.get('/', (req, res) => res.sendFile(__dirname+'/client.html'))
 
-app.get('/all', (req, res) => res.sendJson(
+app.get('/all', (req, res) => res.send(
     {
         txt: {
             time: lastTextUpdate,
@@ -56,7 +56,7 @@ app.get('/all', (req, res) => res.sendJson(
         },
         file: {
             time: lastFileUpdate,
-            val: currentFilename
+            val: currentFileName
         }
     }))
 
@@ -83,9 +83,9 @@ app.post('/newFile', async (req, res) => {
             file.mv('./currentFile');
 
             //notify everyone
-            currentFilename = file.name;
+            currentFileName = file.name;
             lastFileUpdate = Date.now();
-            io.to("global_room").emit('new_file', currentFilename)
+            io.to("global_room").emit('new_file', currentFileName)
 
             //send response
             res.send({
