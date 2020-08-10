@@ -22,11 +22,10 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 
-let port = process.argv.findIndex((i)=>{
-    i == "-p"
-}) > 0 ? process.argv.findIndex((i)=>{
-    i == "-p"
-})+1 : 12121
+let port = 12000
+if(process.argv.includes('-p')){
+    port = process.argv[process.argv.findIndex(e=>e=='-p')+1]
+}
 
 // Quand un client se connecte, on le note dans la console
 io.sockets.on('connection', function (socket) {
