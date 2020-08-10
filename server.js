@@ -22,6 +22,11 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 
+let port = process.argv.findIndex(()=>{
+    "-p"
+}) > 0 ? process.argv.findIndex(()=>{
+    "-p"
+})+1 : 12121
 
 // Quand un client se connecte, on le note dans la console
 io.sockets.on('connection', function (socket) {
@@ -103,6 +108,6 @@ app.post('/newFile', async (req, res) => {
     }
 });
 
-server.listen(9393, () => {
-    console.log('Listening on 9393')
+server.listen(port, () => {
+    console.log('Listening on ' + port)
 });
