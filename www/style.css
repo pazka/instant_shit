@@ -1,4 +1,6 @@
-
+body{
+    overflow-x: hidden;
+}
 
 .file-management{
     display: block;
