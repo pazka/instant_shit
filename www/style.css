@@ -1,0 +1,42 @@
+
+
+.file-management{
+    display: block;
+    position : absolute;
+
+    right : -300px;
+    top : 0px;
+    
+    transition: right 0.7s ease-in-out;
+}
+
+.file-management:focus{
+    right : 0px;
+    transition: right 0.7s ease-in-out;
+}
+
+.file-management.open{
+    right : 0px;
+    transition: right 0.7s ease-in-out;
+}
+
+.file-management #opener{
+    display: block;
+
+    width : 80px;
+    height : 120px;
+    border-radius: 10% 0% 0 10%;
+
+    cursor : pointer;
+    -webkit-box-shadow: inset 1px 2px 42px -14px rgb(192, 158, 158);
+    -moz-box-shadow: inset 1px 2px 42px -14px  rgb(192, 158, 158);
+    box-shadow: inset 1px 2px 42px -14px  rgb(192, 158, 158);
+}
+
+#new-file{
+    width : 300px;
+    height : 120px;
+    -webkit-box-shadow: inset 1px 2px 42px -14px rgba(204,204,204,1);
+    -moz-box-shadow: inset 1px 2px 42px -14px rgba(204,204,204,1);
+    box-shadow: inset 1px 2px 42px -14px rgba(204,204,204,1);
+}
