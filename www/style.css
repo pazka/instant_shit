@@ -1,44 +1,147 @@
-body{
-    overflow-x: hidden;
+
+body {
+    --color-1: #E63946;
+    --color-2: #F1FAEE;
+    --color-3: #A8DADC;
+    --color-4: #457B9D;
+    --color-5: #1D3557;
+
+    display: flex;
+    flex-wrap: wrap;
+    font-family: "Calibri";
 }
 
-.file-management{
-    display: block;
-    position : absolute;
+body > * {
+    margin: 2em;
+    padding: 2em;
+    border-radius: 1em;
 
-    right : -300px;
-    top : 0px;
-    
-    transition: right 0.7s ease-in-out;
+    box-shadow: 5px 5px 1em;
+    top: 0;
+    left: 0;
+
+    position: relative;
+
+    transition: all 1s;
+    height: 100%;
+
 }
 
-.file-management:focus{
-    right : 0px;
-    transition: right 0.7s ease-in-out;
+body > *:hover {
+    top: 5px;
+    left: 5px;
+
+    box-shadow: 0.2em 0.2em 0.2em;
+
+    transition: all 1s;
 }
 
-.file-management.open{
-    right : 0px;
-    transition: right 0.7s ease-in-out;
+.section{
+    margin-bottom: 2em;
+    font-weight: bolder;
+    font-size:1.2em;
 }
 
-.file-management #opener{
-    display: block;
-
-    width : 80px;
-    height : 120px;
-    border-radius: 10% 0% 0 10%;
-
-    cursor : pointer;
-    -webkit-box-shadow: inset 1px 2px 42px -14px rgb(192, 158, 158);
-    -moz-box-shadow: inset 1px 2px 42px -14px  rgb(192, 158, 158);
-    box-shadow: inset 1px 2px 42px -14px  rgb(192, 158, 158);
+#text-edit {
+    flex-grow: 2;
 }
 
-#new-file{
-    width : 300px;
-    height : 120px;
-    -webkit-box-shadow: inset 1px 2px 42px -14px rgba(204,204,204,1);
-    -moz-box-shadow: inset 1px 2px 42px -14px rgba(204,204,204,1);
-    box-shadow: inset 1px 2px 42px -14px rgba(204,204,204,1);
+#file-management {
+    flex-grow: 1;
+    align-items: center;
+    align-content: center;
+}
+
+#file-management #upload-field-outer {
+    position: relative;
+}
+
+#file-management #upload-field-inner {
+    position: relative;
+    height: 10vh;
+}
+
+#file-management #upload-field-inner > * {
+    position: absolute;
+    top: 0;
+}
+
+#file-management > * {
+}
+
+#file-management input {
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    overflow: hidden;
+    position: absolute;
+    z-index: -1;
+}
+
+.btn svg, .btn img, .btn object {
+    width: 5em;
+    height: auto;
+    color: var(--color-1);
+    fill: var(--color-1);
+    cursor: pointer;
+}
+
+.btn {
+    display: flex;
+    cursor: pointer;
+    color: white;
+    font-weight: bold;
+    padding: .5em 1em;
+    border-radius: 0.2em;
+    width: 100%;
+
+    background-color: var(--color-4);
+    background-image: linear-gradient(45deg, var(--color-4), rgba(0, 0, 0, 0));
+
+    box-shadow: 3px 3px 0 3px var(--color-5);
+
+    transition: all .5s
+}
+
+.btn:hover {
+    background-color: var(--color-1);
+    background-image: linear-gradient(45deg, var(--color-4), rgba(0, 0, 0, 0));
+
+    box-shadow: 1px 1px 0 1px var(--color-5);
+
+    transition: all .5s;
+}
+
+@keyframes hover {
+    from {
+        position: relative;
+        bottom: 0;
+    }
+    to {
+        position: relative;
+        bottom: 0.5em;
+    }
+}
+
+.btn + .ready {
+    margin: 1em;
+    border-radius: 0.5rem;
+    transition: all 1s;
+    animation: hover 1s alternate-reverse infinite ease-in-out;
+}
+
+#file-management progress {
+    width: 100%;
+}
+
+#file-management progress, progress::-moz-progress-bar, progress::-webkit-progress-value {
+    background: blue;
+    color: blue;
+}
+
+@media (max-aspect-ratio: 1/1) {
+    body {
+        display: flex;
+        flex-direction: column;
+    }
 }

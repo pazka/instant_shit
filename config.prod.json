@@ -1,0 +1,8 @@
+﻿{
+  "NAME" : "Instant shit",
+  "PORT" : 12121,
+  "CORS" : [
+    "hosh.it",
+    "alessiasanna.fr"
+  ]
+}

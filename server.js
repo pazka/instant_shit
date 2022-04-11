@@ -7,7 +7,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const morgan = require('morgan');
 const _ = require('lodash');
-
+const config = require('./config.json')
 var fs = require('fs');
 
 // Chargement de socket.io
@@ -19,23 +19,25 @@ app.use(fileUpload({
     createParentPath: true
 }));
 //add other middleware
-app.use(cors());
+app.use(cors(config.CORS));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(morgan('combined'));
 
 app.use('/', express.static(path.join(__dirname, "www")));
 
-let port = 12000
+let port = config.PORT
 if (process.argv.includes('-p')) {
-    port = process.argv[process.argv.findIndex(e => e == '-p') + 1]
+    port = process.argv[process.argv.findIndex(e => e === '-p') + 1]
 }
-
-
 
 // Quand un client se connecte, on le note dans la console
 io.sockets.on('connection', function (socket) {
     console.log('Client connected');
+    
+    socket.on('disconnect', () => {
+        console.log(`${socket.conn.remoteAddress} connected`);
+    });
     socket.emit("my-id", socket.id);
     socket.join("global_room");
 
@@ -43,11 +45,16 @@ io.sockets.on('connection', function (socket) {
         if (JSON.stringify(txt).length > 1000000) {
             io.to("global_room").emit('new_text', { from: socket.id, time: lastTextUpdate, val: "Text is too big !" })
             return
-        };
+        }
 
         currentText = txt;
         lastTextUpdate = Date.now();
         io.to("global_room").emit('new_text', { from: socket.id, time: lastTextUpdate, val: currentText })
+    });
+
+
+    socket.on('disconnect', () => {
+        console.log(`${socket.conn.remoteAddress} disconnected`);
     });
 });
 
@@ -55,6 +62,10 @@ var currentText = "";
 var currentFileName = "";
 var lastTextUpdate = Date.now();
 var lastFileUpdate = Date.now();
+
+app.get('/title',(req,res,next)=>{
+    res.send(config.NAME)
+})
 
 app.get('/all', (req, res) => res.send(
     {
@@ -79,19 +90,19 @@ app.post('/newFile', async (req, res) => {
             });
         } else {
             //Use the name of the input field (i.e. "avatar") to retrieve the uploaded file
-            let file = req.files.newFile;
-            if (file.size > 2 * 1024 * 1024 * 1024) {
+            let newFile = req.files.newFile;
+            if (newFile.size > 2 * 1024 * 1024 * 1024) {
                 return res.send({
                     status: false,
-                    message: 'File too big ' + file.size
+                    message: 'File too big ' + newFile.size
                 });
             }
 
             //Use the mv() method to place the file in upload directory (i.e. "uploads")
-            file.mv('./currentFile');
+            newFile.mv('./currentFile');
 
             //notify everyone
-            currentFileName = file.name;
+            currentFileName = newFile.name;
             lastFileUpdate = Date.now();
             io.to("global_room").emit('new_file', { time: lastFileUpdate, val: currentFileName })
 

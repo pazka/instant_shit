@@ -6,139 +6,167 @@
     <title>Instant Shit</title>
     <link href="quill.snow.css" rel="stylesheet">
     <link href="style.css" rel="stylesheet">
+    <script src="tailwind.3.0.23.js"></script>
 </head>
 
 <body>
-    <div>
-        <div><span>Last Text Update [</span> <span id="txtMaj"></span> <span>]</span></div>
-        <div id="current-text"></div>
+<div id="text-edit">
+    <div class="section">
+        <h1>Copy/Paste Text</h1>
+        <span>Last Text Update [</span><span id="txtMaj"></span><span>]</span>
     </div>
-
-    <div id ="file-management" class="file-management">
-
-        <div style="display: flex;">
-            <div id="opener" onclick="document.getElementById('file-management').classList.toggle('open')"></div>
-            <div><div >
-                <input type="file" name="newFile" id="new-file">
-            </div>
-            <div>
-                <div>
-                    <progress id="progress" max=1 value=0></progress>
-                </div>
-                <button type="submit" onclick="sendFile()">Upload File</button>
-            </div>
-            <div>
-                <span>Last File Update [</span> <span id="fileMaj"></span> <span>] </span>
     
-                <div>
-                    <a href="/file"><span id="fileNameMaj"></span></a>
-                </div>
-    
-            </div>
+    <div id="current-text"></div>
+</div>
+
+<div id="file-management">
+    <div class="section">
+        <h1>Copy/Paste File</h1>
+        <span>Last File Update [</span> <span id="fileMaj"></span> <span>] </span>
     </div>
+    
+    <div id="upload-field-outer">
+        <div id="upload-field-inner">
+            <input onchange="handleFileUpdate()" type="file" name="newFile" id="new-file"/>
+            <label class="btn" for="new-file"> <img src="upload.svg" alt="upload icon"/> Upload your file</label>
         </div>
     </div>
-
-
-    <script src="socket.io.js"></script>
-    <script src="quill.js"></script>
-    <script>
-
-        //EDITOR INIT ##########################################################""
-        var editor = new Quill('#current-text', {
-            theme: 'snow'
-        });
-
-
-        editor.on('text-change', function (delta, oldDelta, source) {
-            if (source == 'user') {
-                socket.emit('txt_update', editor.getContents());
-            }
-        });
-
-        // SOCKET Send/receive ##################################################""
-        var mySocketId;
-
-        const socket = io();
-
-        socket.on('connect', () => {
-            console.info("connected with the server")
-        });
-        socket.on('my-id', (id) => {
-            mySocketId = id
-        });
-
-        socket.on("new_text", (txt) => {
-            document.getElementById("txtMaj").innerHTML = (new Date(txt.time)).toLocaleDateString() + " | " + (new Date(txt.time)).toLocaleTimeString()
-            if (txt.from === mySocketId) return;
-
-            editor.setContents(txt.val, "api")
-        })
-
-        socket.on("new_file", (file) => {
-            document.getElementById("fileMaj").innerHTML = (new Date(file.time)).toLocaleDateString() + " | " + (new Date(file.time)).toLocaleTimeString()
-            document.getElementById("fileNameMaj").innerHTML = file.val;
-        })
-
-
-        //Data Manipulation #######################################################################
-        var fileInput = document.querySelector('#new-file'),
-            progress = document.querySelector('#progress');
-
-
-        function sendFile() {
-
-            var xhr = new XMLHttpRequest();
-
-            xhr.open('POST', '/newFile');
-
-            xhr.upload.addEventListener('progress', function (e) {
-                progress.value = e.loaded;
-                progress.max = e.total;
-            });
-
-            xhr.addEventListener('load', function () {
-                console.info("upload done")
-            });
-
-            var form = new FormData();
-            form.append('newFile', fileInput.files[0]);
-
-            xhr.send(form);
-        }
-
-        function getAllData() {
-            var xhr = new XMLHttpRequest();
-            xhr.onload = function () {
-                if (xhr.status >= 200 && xhr.status < 300) {
-                    let data = JSON.parse(xhr.responseText)
-
-                    editor.setContents(data.txt.val, "api")
-                    document.getElementById("txtMaj").innerHTML = (new Date(data.txt.time)).toLocaleDateString() + " | " + (new Date(data.txt.time)).toLocaleTimeString()
-                    document.getElementById("fileMaj").innerHTML = (new Date(data.file.time)).toLocaleDateString() + " | " + (new Date(data.file.time)).toLocaleTimeString()
-                    document.getElementById("fileNameMaj").innerHTML = data.file.val;
-                }
-            };
-            xhr.open('GET', '/all');
-            xhr.send();
-        }
-        getAllData();
-
-        // File Div Interation #################################################################################
+    <progress id="progress" max=1 value=0></progress>
+    <div id="download-field">
         
-        document.addEventListener("dragenter", function( event ) {
-            // highlight potential drop target when the draggable element enters it
+        <div>
+            <a class="btn" href="/file" id="download">
+                <span><object type="image/svg+xml" data="download.svg">
+                    <img src="download.svg" alt="fallback download icon"/>
+                </object></span>
+                <span></span> <span id="fileNameMaj"></span>
+            </a>
+        </div>
 
-            if ( event.target.id == "opener" ) {
-                document.getElementById("file-management").classList.add("open");
-            }
+    </div>
+</div>
 
-        }, false);
+<script src="socket.io.js"></script>
+<script src="quill.js"></script>
+<script>
 
-        function toggleOpen(){
-            document.getElementById("file-management").classList.toggle("opened");
+    //EDITOR INIT ##########################################################""
+    var editor = new Quill('#current-text', {
+        theme: 'snow'
+    });
+
+
+    editor.on('text-change', function (delta, oldDelta, source) {
+        if (source == 'user') {
+            socket.emit('txt_update', editor.getContents());
         }
-    </script>
+    });
+
+    // SOCKET Send/receive ##################################################""
+    var mySocketId;
+
+    const socket = io();
+
+    socket.on('connect', () => {
+        console.info("connected with the server")
+    });
+    socket.on('my-id', (id) => {
+        mySocketId = id
+    });
+
+    socket.on("new_text", (txt) => {
+        document.getElementById("txtMaj").innerHTML = (new Date(txt.time)).toLocaleDateString() + " | " + (new Date(txt.time)).toLocaleTimeString()
+        if (txt.from === mySocketId) return;
+
+        editor.setContents(txt.val, "api")
+    })
+
+    socket.on("new_file", (file) => {
+        document.getElementById("fileMaj").innerHTML = (new Date(file.time)).toLocaleDateString() + " | " + (new Date(file.time)).toLocaleTimeString()
+        document.getElementById("fileNameMaj").innerHTML = file.val;
+    })
+
+
+    //Data Manipulation #######################################################################
+    var fileInput = document.querySelector('#new-file'),
+        progress = document.querySelector('#progress')
+
+    function handleFileUpdate() {
+        sendFile()
+    }
+
+    function sendFile() {
+
+        var xhr = new XMLHttpRequest();
+
+        xhr.open('POST', '/newFile');
+
+        xhr.upload.addEventListener('progress', function (e) {
+            progress.value = e.loaded;
+            progress.max = e.total;
+        });
+
+        xhr.addEventListener('load', function () {
+            console.info("upload done")
+        });
+
+        var form = new FormData();
+        form.append('newFile', fileInput.files[0]);
+
+        xhr.send(form);
+    }
+
+    function getAllData() {
+        var xhr = new XMLHttpRequest();
+        xhr.onload = function () {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                let data = JSON.parse(xhr.responseText)
+
+                var range = editor.getSelection();
+                editor.setContents(data.txt.val, "api")
+                if (range)
+                    editor.setSelectionRange(range.index, range.length, "api")
+
+                document.getElementById("txtMaj").innerHTML = (new Date(data.txt.time)).toLocaleDateString() + " | " + (new Date(data.txt.time)).toLocaleTimeString()
+                document.getElementById("fileMaj").innerHTML = (new Date(data.file.time)).toLocaleDateString() + " | " + (new Date(data.file.time)).toLocaleTimeString()
+                document.getElementById("fileNameMaj").innerHTML = data.file.val;
+            }
+        };
+        xhr.open('GET', '/all');
+        xhr.send();
+    }
+
+    getAllData();
+
+    function getTitle() {
+        var xhr = new XMLHttpRequest();
+        xhr.onload = function () {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                let data = xhr.responseText
+                document.title = data
+            }
+        };
+        xhr.open('GET', '/title');
+        xhr.send();
+    }
+
+    getTitle()
+
+    // File Div Interation #################################################################################
+
+    document.addEventListener("dragenter", function (event) {
+        // highlight potential drop target when the draggable element enters it
+
+        if (event.target.id === "opener") {
+            document.getElementById("file-management").classList.add("open");
+        }
+
+    }, false);
+
+    function toggleOpen() {
+        document.getElementById("file-management").classList.toggle("opened");
+    }
+</script>
 </body>
 
 </html>
