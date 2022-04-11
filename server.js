@@ -21,20 +21,26 @@ app.use(fileUpload({
 //add other middleware
 app.use(cors(config.CORS));
 app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.urlencoded({extended: true}));
 app.use(morgan('combined'));
 
 app.use('/', express.static(path.join(__dirname, "www")));
 
 let port = config.PORT
+let name = config.NAME
+
 if (process.argv.includes('-p')) {
     port = process.argv[process.argv.findIndex(e => e === '-p') + 1]
+}
+
+if (process.argv.includes('-t')) {
+    name = process.argv[process.argv.findIndex(e => e === '-t') + 1]
 }
 
 // Quand un client se connecte, on le note dans la console
 io.sockets.on('connection', function (socket) {
     console.log('Client connected');
-    
+
     socket.on('disconnect', () => {
         console.log(`${socket.conn.remoteAddress} connected`);
     });
@@ -43,13 +49,13 @@ io.sockets.on('connection', function (socket) {
 
     socket.on('txt_update', function (txt) {
         if (JSON.stringify(txt).length > 1000000) {
-            io.to("global_room").emit('new_text', { from: socket.id, time: lastTextUpdate, val: "Text is too big !" })
+            io.to("global_room").emit('new_text', {from: socket.id, time: lastTextUpdate, val: "Text is too big !"})
             return
         }
 
         currentText = txt;
         lastTextUpdate = Date.now();
-        io.to("global_room").emit('new_text', { from: socket.id, time: lastTextUpdate, val: currentText })
+        io.to("global_room").emit('new_text', {from: socket.id, time: lastTextUpdate, val: currentText})
     });
 
 
@@ -63,8 +69,8 @@ var currentFileName = "";
 var lastTextUpdate = Date.now();
 var lastFileUpdate = Date.now();
 
-app.get('/title',(req,res,next)=>{
-    res.send(config.NAME)
+app.get('/title', (req, res, next) => {
+    res.send(name)
 })
 
 app.get('/all', (req, res) => res.send(
@@ -78,7 +84,7 @@ app.get('/all', (req, res) => res.send(
             val: currentFileName
         }
     })
-    )
+)
 
 app.get('/file', (req, res) => res.download("./currentFile", currentFileName))
 app.post('/newFile', async (req, res) => {
@@ -104,7 +110,7 @@ app.post('/newFile', async (req, res) => {
             //notify everyone
             currentFileName = newFile.name;
             lastFileUpdate = Date.now();
-            io.to("global_room").emit('new_file', { time: lastFileUpdate, val: currentFileName })
+            io.to("global_room").emit('new_file', {time: lastFileUpdate, val: currentFileName})
 
             //send response
             res.send({

@@ -1,6 +1,6 @@
 ﻿{
   "NAME" : "Instant shit",
-  "PORT" : 12121,
+  "PORT" : 80,
   "CORS" : [
     "hosh.it",
     "alessiasanna.fr"
