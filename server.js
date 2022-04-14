@@ -7,12 +7,11 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const morgan = require('morgan');
 const _ = require('lodash');
-const config = require('./config.json')
 var fs = require('fs');
 
-// Chargement de socket.io
 var io = require('socket.io').listen(server);
 
+const config = require('./config.js')('config.json')
 
 // enable files upload
 app.use(fileUpload({
@@ -47,15 +46,15 @@ io.sockets.on('connection', function (socket) {
     socket.emit("my-id", socket.id);
     socket.join("global_room");
 
-    socket.on('txt_update', function (txt) {
-        if (JSON.stringify(txt).length > 1000000) {
+    socket.on('txt_update', function (data) {
+        if (JSON.stringify(data.content).length > 1000000) {
             io.to("global_room").emit('new_text', {from: socket.id, time: lastTextUpdate, val: "Text is too big !"})
             return
         }
 
-        currentText = txt;
+        currentText = data.content;
         lastTextUpdate = Date.now();
-        io.to("global_room").emit('new_text', {from: socket.id, time: lastTextUpdate, val: currentText})
+        io.to("global_room").emit('new_text', {from: socket.id, time: lastTextUpdate, val: data})
     });
 
 

@@ -1,7 +1,1 @@
-﻿{
-  "NAME" : "Dev Instant shit",
-  "PORT" : 12121,
-  "CORS" : [
-    "*"
-  ]
-}
+{"ENV" : "DEV","DEV":{}}

@@ -5,5 +5,5 @@ COPY package.json .
 CMD npm i
 
 COPY dist/**/* .
-CMD
+CMD 
 

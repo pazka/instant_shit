@@ -30,8 +30,8 @@
             <input onchange="handleFileUpdate()" type="file" name="newFile" id="new-file"/>
             <label class="btn" for="new-file"> <img src="upload.svg" alt="upload icon"/> Upload your file</label>
         </div>
+        <progress id="progress" max=1 value=0></progress>
     </div>
-    <progress id="progress" max=1 value=0></progress>
     <div id="download-field">
         
         <div>
@@ -56,9 +56,21 @@
     });
 
 
+    function setEditorContent(txt,where = 0){
+        var range = editor.getSelection();
+        editor.setContents(txt, "api")
+        if (range){
+            if(range.index > where)
+                editor.setSelection(range.index+1, range.length, "api")
+            else
+                editor.setSelection(range.index, range.length, "api")
+        }
+    }
+
+
     editor.on('text-change', function (delta, oldDelta, source) {
-        if (source == 'user') {
-            socket.emit('txt_update', editor.getContents());
+        if (source === 'user') {
+            socket.emit('txt_update', {content : editor.getContents(),delta:delta,oldDelta:oldDelta,source:source});
         }
     });
 
@@ -78,7 +90,7 @@
         document.getElementById("txtMaj").innerHTML = (new Date(txt.time)).toLocaleDateString() + " | " + (new Date(txt.time)).toLocaleTimeString()
         if (txt.from === mySocketId) return;
 
-        editor.setContents(txt.val, "api")
+        setEditorContent(txt.val.content,txt.val.delta?.ops[0]?.retain)
     })
 
     socket.on("new_file", (file) => {
@@ -115,18 +127,13 @@
 
         xhr.send(form);
     }
-
+    
     function getAllData() {
         var xhr = new XMLHttpRequest();
         xhr.onload = function () {
             if (xhr.status >= 200 && xhr.status < 300) {
                 let data = JSON.parse(xhr.responseText)
-
-                var range = editor.getSelection();
-                editor.setContents(data.txt.val, "api")
-                if (range)
-                    editor.setSelectionRange(range.index, range.length, "api")
-
+                setEditorContent(data.txt.val)
                 document.getElementById("txtMaj").innerHTML = (new Date(data.txt.time)).toLocaleDateString() + " | " + (new Date(data.txt.time)).toLocaleTimeString()
                 document.getElementById("fileMaj").innerHTML = (new Date(data.file.time)).toLocaleDateString() + " | " + (new Date(data.file.time)).toLocaleTimeString()
                 document.getElementById("fileNameMaj").innerHTML = data.file.val;
@@ -151,21 +158,6 @@
     }
 
     getTitle()
-
-    // File Div Interation #################################################################################
-
-    document.addEventListener("dragenter", function (event) {
-        // highlight potential drop target when the draggable element enters it
-
-        if (event.target.id === "opener") {
-            document.getElementById("file-management").classList.add("open");
-        }
-
-    }, false);
-
-    function toggleOpen() {
-        document.getElementById("file-management").classList.toggle("opened");
-    }
 </script>
 </body>
 

@@ -1,8 +1,11 @@
 ﻿{
-  "NAME" : "Instant shit",
-  "PORT" : 80,
-  "CORS" : [
-    "hosh.it",
-    "alessiasanna.fr"
-  ]
+  "ENV" : "PROD",
+  "PROD" : {
+    "NAME" : "${",
+    "PORT" : 80,
+    "CORS" : [
+      "hosh.it",
+      "alessiasanna.fr"
+    ]
+  }
 }
