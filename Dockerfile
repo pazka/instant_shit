@@ -1,12 +1,13 @@
 ﻿FROM node
 
 WORKDIR /
-COPY package.json .
-CMD npm i
+COPY ./package.json .
+RUN npm i
 
-COPY dist/**/* .
+COPY . .
 
 ENV PORT 80
-ENV TITLE Coppa
+EXPOSE 80
+ENV TITLE QuickPaste
 
-CMD npm start
+CMD ["npm", "start"]

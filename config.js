@@ -37,6 +37,7 @@ function initConfig(configPath,strict = false) {
 
     // Opening default file
     const data = fs.readFileSync(configPath)
+    console.log("Loading config : ",data)
     fullConfig = JSON.parse(data)
 
     function __tryParseEnvVarFromConfig(potentialEnvVar) {

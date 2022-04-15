@@ -1,4 +1,4 @@
-const config = require('./config.js')('config.json')
+const config = require('./config.js')('./config.json')
 const express = require("express")
 const app = express();
 const path = require("path")
