@@ -1,3 +1,4 @@
+const config = require('./config.js')('config.json')
 const express = require("express")
 const app = express();
 const path = require("path")
@@ -11,22 +12,21 @@ var fs = require('fs');
 
 var io = require('socket.io').listen(server);
 
-const config = require('./config.js')('config.json')
 
 // enable files upload
 app.use(fileUpload({
     createParentPath: true
 }));
 //add other middleware
-app.use(cors(config.CORS));
+app.use(cors(config('CORS')));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({extended: true}));
 app.use(morgan('combined'));
 
 app.use('/', express.static(path.join(__dirname, "www")));
 
-let port = config.PORT
-let name = config.NAME
+let port = config('PORT',80)
+let name = config('NAME',"Instant Shit") 
 
 if (process.argv.includes('-p')) {
     port = process.argv[process.argv.findIndex(e => e === '-p') + 1]
@@ -47,12 +47,14 @@ io.sockets.on('connection', function (socket) {
     socket.join("global_room");
 
     socket.on('txt_update', function (data) {
-        if (JSON.stringify(data.content).length > 1000000) {
-            io.to("global_room").emit('new_text', {from: socket.id, time: lastTextUpdate, val: "Text is too big !"})
+        const content = data.content
+        
+        if (content.length > config("MAX_TEXT_SIZE")) {
+            io.to("global_room").emit('new_text', {from: socket.id, time: lastTextUpdate, error: `Text is too big ! Maximum length is ${config("MAX_TEXT_SIZE")}, yours is ${content.length}`})
             return
         }
-
-        currentText = data.content;
+        currentText = content
+        
         lastTextUpdate = Date.now();
         io.to("global_room").emit('new_text', {from: socket.id, time: lastTextUpdate, val: data})
     });
@@ -96,10 +98,11 @@ app.post('/newFile', async (req, res) => {
         } else {
             //Use the name of the input field (i.e. "avatar") to retrieve the uploaded file
             let newFile = req.files.newFile;
-            if (newFile.size > 2 * 1024 * 1024 * 1024) {
+            console.log("New file size : ",newFile.size," octets")
+            if (newFile.size > config("MAX_FILE_SIZE")) {
                 return res.send({
                     status: false,
-                    message: 'File too big ' + newFile.size
+                    message: `File too big, max is ${Math.round(config("MAX_FILE_SIZE") / (1024 * 1024))} Mo, yours is ${Math.round(newFile.size / (1024 * 1024))} Mo`
                 });
             }
 

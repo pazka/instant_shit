@@ -1,6 +1,6 @@
 ﻿fs = require('fs')
 
-const envVarRegex = '^\$\{(.*)\}$'
+const envVarRegex = /^\$\{(.*)\}$/
 
 /**
  *
@@ -24,13 +24,14 @@ let configName = "NONE"
  Read and search for the ENV key in the config file(json) to set the current config
 
  @param configPath: config path to read or create the config at
+ @param strict: WIll crash if some variables are not found in environment, otherwise will replace by undefined
  @return: the current parsed config
  */
-function initConfig(configPath) {
+function initConfig(configPath,strict = false) {
     let fullConfig = {}
 
     // Creating default file
-    if (fs.existsSync(configPath)) {
+    if (!fs.existsSync(configPath)) {
         fs.writeFileSync(configPath, '{"ENV" : "DEV","DEV":{}}')
     }
 
@@ -38,23 +39,24 @@ function initConfig(configPath) {
     const data = fs.readFileSync(configPath)
     fullConfig = JSON.parse(data)
 
-    function __tryParseEnvVarFromConfig(varName) {
+    function __tryParseEnvVarFromConfig(potentialEnvVar) {
         /**
          *
          Will parse every value that written like "${SOME_VALUE}"
          with the value stored in the environment variable named SOME_VALUE
 
-         If the envvar dosen't exist, it raises an error
+         If the envvar dosen't exist, it raises an error in strict mode
          */
-        if (varName.match(envVarRegex)) {
-            const envVarName = varName.search(envVarRegex)[0]
-            try {
-                return process.env[envVarName]
-            } catch (e) {
-                throw new Error(`The env var ${envVarName} has not been found`)
+        if (potentialEnvVar.match(envVarRegex)) {
+            const envVarName = potentialEnvVar.match(envVarRegex)[1]
+            
+            if (!Object.keys(process.env).includes(envVarName) && strict) {
+                throw new ReferenceError(`The ${envVarName} environment variable is not present in your environment. The strict mode prohibit to continue`)
             }
+            
+            return process.env[envVarName]
         } else {
-            return varName
+            return potentialEnvVar
         }
     }
 
@@ -74,12 +76,12 @@ function initConfig(configPath) {
     fullConfig = __recursParceEnvVar(fullConfig)
 
     if (!Object.keys(fullConfig).includes("ENV")) {
-        throw new SyntaxError("The 'ENV' key is not present in the config file. Unable to set the current environment")
+        throw new ReferenceError("The 'ENV' key is not present in the config file. Unable to set the current environment")
     }
 
     if (!Object.keys(fullConfig).includes(fullConfig["ENV"])) {
         console.error('Unable to set the current environment')
-        throw new SyntaxError(`The ${fullConfig["ENV"]} key is not present in the config.json. `)
+        throw new ReferenceError(`The ${fullConfig["ENV"]} key is not present in the config.json. `)
     }
 
     configName = __tryParseEnvVarFromConfig(fullConfig["ENV"])
@@ -89,23 +91,46 @@ function initConfig(configPath) {
 
 /**
  *     @param key: optional, key to search, in the format "key.key2.key3" for nested props
+ *     @param defaultVal : optional, value if not found in the config, will throw an error if not foudn and no default value
  @return: The whole config if no key was specified, the value otherwise
  */
-function getConfig(key = "") {
-    if (key.strip("") !== "" && !key.match('(\\w\\.?)*')) {
+function getConfig(key = "", defaultVal) {
+    if (key.trim() !== "" && !key.match('(\\w\\.?)*')) {
         throw new Error("The key must be in the format key1.key2.key3...")
     }
 
-    let val = config
+    let val = {...config}
     key.split('.').forEach(subKey => {
-        if (subKey === "")
+        if (subKey === "") {
             return
-        try {
-            val = val[subKey]
-        } catch (e) {
-            throw new RangeError(`The key ${key} wasn't found in the config ${configName}`)
         }
+
+        if (!Object.keys(val).includes(key)) {
+            throw new ReferenceError(`The key ${key} wasn't found in the config ${configName}`)
+        }
+
+        if (val[key] == null && defaultVal !== undefined) {
+            console.warn(`The value of ${key} was undefined in the config ${configName}, using default val ${defaultVal}`)
+            val = defaultVal
+            return
+        }
+
+        if (val[key] == null && defaultVal === undefined) {
+            throw new ReferenceError(`The value of ${key} was undefined in the config ${configName} and no default value is given.`)
+        }
+
+        val = val[key]
     })
+    
+    return val
 }
 
-module.exports = (path = "config.json") => initConfig(path)
+/**
+ * Return a function to safely access the config properties
+ * @param configFilePath
+ * @returns {getConfig}
+ */
+module.exports = (configFilePath = "config.json") => {
+    initConfig(configFilePath)
+    return getConfig
+}

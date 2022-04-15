@@ -15,7 +15,8 @@
         <h1>Copy/Paste Text</h1>
         <span>Last Text Update [</span><span id="txtMaj"></span><span>]</span>
     </div>
-    
+    <span class="hidden" id="error"></span>
+
     <div id="current-text"></div>
 </div>
 
@@ -24,7 +25,7 @@
         <h1>Copy/Paste File</h1>
         <span>Last File Update [</span> <span id="fileMaj"></span> <span>] </span>
     </div>
-    
+
     <div id="upload-field-outer">
         <div id="upload-field-inner">
             <input onchange="handleFileUpdate()" type="file" name="newFile" id="new-file"/>
@@ -33,7 +34,7 @@
         <progress id="progress" max=1 value=0></progress>
     </div>
     <div id="download-field">
-        
+
         <div>
             <a class="btn" href="/file" id="download">
                 <span><object type="image/svg+xml" data="download.svg">
@@ -56,12 +57,23 @@
     });
 
 
-    function setEditorContent(txt,where = 0){
+    function setEditorContentDelta(val, where = 0) {
+        var range = editor.getSelection();
+        editor.updateContents(val.delta, "api")
+        if (range) {
+            if (range.index > where)
+                editor.setSelection(range.index + 1, range.length, "api")
+            else
+                editor.setSelection(range.index, range.length, "api")
+        }
+    }
+
+    function setEditorContentFull(txt, where = 0) {
         var range = editor.getSelection();
         editor.setContents(txt, "api")
-        if (range){
-            if(range.index > where)
-                editor.setSelection(range.index+1, range.length, "api")
+        if (range) {
+            if (range.index > where)
+                editor.setSelection(range.index + 1, range.length, "api")
             else
                 editor.setSelection(range.index, range.length, "api")
         }
@@ -70,7 +82,12 @@
 
     editor.on('text-change', function (delta, oldDelta, source) {
         if (source === 'user') {
-            socket.emit('txt_update', {content : editor.getContents(),delta:delta,oldDelta:oldDelta,source:source});
+            socket.emit('txt_update', {
+                content: editor.getContents().ops[0].insert,
+                delta: delta,
+                oldDelta: oldDelta,
+                source: source
+            });
         }
     });
 
@@ -87,15 +104,23 @@
     });
 
     socket.on("new_text", (txt) => {
-        document.getElementById("txtMaj").innerHTML = (new Date(txt.time)).toLocaleDateString() + " | " + (new Date(txt.time)).toLocaleTimeString()
-        if (txt.from === mySocketId) return;
+        document.getElementById("txtMaj").innerText = (new Date(txt.time)).toLocaleDateString() + " | " + (new Date(txt.time)).toLocaleTimeString()
+        if (txt.error)
+            document.getElementById("error").innerText = txt.error
+        document.getElementById("error").className = txt.error ? "" : "hidden"
 
-        setEditorContent(txt.val.content,txt.val.delta?.ops[0]?.retain)
+        if (txt.from === mySocketId) {
+            console.log("same socket, do nothing")
+            return;
+        }
+
+        //setEditorContentFull(txt.val.content, txt.val.delta?.ops[0]?.retain)
+        setEditorContentDelta(txt.val)
     })
 
     socket.on("new_file", (file) => {
-        document.getElementById("fileMaj").innerHTML = (new Date(file.time)).toLocaleDateString() + " | " + (new Date(file.time)).toLocaleTimeString()
-        document.getElementById("fileNameMaj").innerHTML = file.val;
+        document.getElementById("fileMaj").innerText = (new Date(file.time)).toLocaleDateString() + " | " + (new Date(file.time)).toLocaleTimeString()
+        document.getElementById("fileNameMaj").innerText = file.val;
     })
 
 
@@ -122,18 +147,37 @@
             console.info("upload done")
         });
 
+        xhr.onreadystatechange = () => {
+            // In local files, status is 0 upon success in Mozilla Firefox
+            if (xhr.readyState === XMLHttpRequest.DONE) {
+                var status = xhr.status;
+                if (status === 0 || (status >= 200 && status < 400)) {
+                    // The request has been completed successfully
+                    processUploadResponse(xhr.responseText)
+                } else {
+                    console.error(xhr)
+                }
+            }
+        }
+
         var form = new FormData();
         form.append('newFile', fileInput.files[0]);
 
         xhr.send(form);
     }
-    
+
+    function processUploadResponse(data) {
+        const res = JSON.parse(data)
+        if (!res.status)
+            alert(res.message)
+    }
+
     function getAllData() {
         var xhr = new XMLHttpRequest();
         xhr.onload = function () {
             if (xhr.status >= 200 && xhr.status < 300) {
                 let data = JSON.parse(xhr.responseText)
-                setEditorContent(data.txt.val)
+                setEditorContentFull(data.txt.val)
                 document.getElementById("txtMaj").innerHTML = (new Date(data.txt.time)).toLocaleDateString() + " | " + (new Date(data.txt.time)).toLocaleTimeString()
                 document.getElementById("fileMaj").innerHTML = (new Date(data.file.time)).toLocaleDateString() + " | " + (new Date(data.file.time)).toLocaleTimeString()
                 document.getElementById("fileNameMaj").innerHTML = data.file.val;

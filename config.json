@@ -1,1 +1,13 @@
-{"ENV" : "DEV","DEV":{}}
+{
+  "ENV" : "DEV",
+  "DEV" : {
+    "NAME" : "Dev Instant shit",
+    "PORT" : 12121,
+    "MAX_TEXT_SIZE" : 1000,
+    "_MAX_FILE_SIZE" : "1024 * 1024 = 1 048 576 bytes = 1 Mo",
+    "MAX_FILE_SIZE" : 1048576,
+    "CORS" : [
+      "*"
+    ]
+  }
+}

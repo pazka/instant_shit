@@ -5,5 +5,8 @@ COPY package.json .
 CMD npm i
 
 COPY dist/**/* .
-CMD 
 
+ENV PORT 80
+ENV TITLE Coppa
+
+CMD npm start

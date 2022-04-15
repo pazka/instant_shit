@@ -6,9 +6,21 @@ body {
     --color-4: #457B9D;
     --color-5: #1D3557;
 
+    --color-1-dark: #8f232b;
+    --color-2-dark: #9ca29a;
+    --color-3-dark: #668385;
+    --color-4-dark: #294a5f;
+    --color-5-dark: #15253c;
+
     display: flex;
     flex-wrap: wrap;
     font-family: "Calibri";
+
+    color: black !important;
+    fill: black !important;
+    background-image: linear-gradient(60deg, var(--color-5) 0%, var(--color-3) 80%, var(--color-1) 100%);
+    min-height:100vh;
+    height:fit-content;
 }
 
 body > * {
@@ -23,8 +35,7 @@ body > * {
     position: relative;
 
     transition: all 1s;
-    height: 100%;
-
+    background-color: white;
 }
 
 body > *:hover {
@@ -36,20 +47,33 @@ body > *:hover {
     transition: all 1s;
 }
 
-.section{
+.section {
     margin-bottom: 2em;
     font-weight: bolder;
-    font-size:1.2em;
+    font-size: 1.2em;
 }
-
+.ql-container{
+    height:auto ;
+}
+.ql-editor{
+    min-height:60vh ;
+}
 #text-edit {
     flex-grow: 2;
+    flex-shrink: 2;
+    flex-basis: 60%;
+    max-height:90vh;
+    height: fit-content;
+    overflow-y:auto;
 }
 
 #file-management {
     flex-grow: 1;
+    flex-shrink: 1;
+    flex-basis: 30%;
     align-items: center;
     align-content: center;
+    height: fit-content;
 }
 
 #file-management #upload-field-outer {
@@ -89,7 +113,6 @@ body > *:hover {
 .btn {
     display: flex;
     cursor: pointer;
-    color: white;
     font-weight: bold;
     padding: .5em 1em;
     border-radius: 0.2em;
@@ -98,19 +121,18 @@ body > *:hover {
 
     align-items: center;
 
-    background-color: var(--color-4);
-    background-image: linear-gradient(45deg, var(--color-4), rgba(0, 0, 0, 0));
+    background-color: var(--color-3);
+    background-image: linear-gradient(45deg, var(--color-4), var(--color-4), rgba(0, 0, 0, 0));
 
-    box-shadow: 3px 3px 0 3px var(--color-5);
+    box-shadow: 3px 3px 0 3px var(--color-4-dark);
 
     transition: all .5s
 }
 
 .btn:hover {
     background-color: var(--color-1);
-    background-image: linear-gradient(45deg, var(--color-4), rgba(0, 0, 0, 0));
 
-    box-shadow: 1px 1px 0 1px var(--color-5);
+    box-shadow: 1px 1px 0 1px var(--color-4-dark);
 
     transition: all .5s;
 }
@@ -140,6 +162,24 @@ body > *:hover {
 #file-management progress, progress::-moz-progress-bar, progress::-webkit-progress-value {
     background: blue;
     color: blue;
+}
+
+#error {
+    color: var(--color-1);
+    opacity:1;
+    font-weight: bolder;
+    position: relative;
+    bottom: 0;
+    transition: all 1s;
+    min-width : 5em;
+    min-height : 2em;
+}
+
+#error .hidden {
+    opacity:0;
+    position: relative;
+    bottom: 1em;
+    transition: all 1s;
 }
 
 @media (max-aspect-ratio: 1/1) {
