@@ -7,6 +7,7 @@
     <link href="quill.snow.css" rel="stylesheet">
     <link href="style.css" rel="stylesheet">
     <script src="tailwind.3.0.23.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 
 <body>
@@ -29,7 +30,9 @@
     <div id="upload-field-outer">
         <div id="upload-field-inner">
             <input onchange="handleFileUpdate()" type="file" name="newFile" id="new-file"/>
-            <label class="btn" for="new-file"> <img src="upload.svg" alt="upload icon"/> Upload your file</label>
+            <label class="btn" for="new-file"> <span><object type="image/svg+xml" data="upload.svg">
+                    <img src="download.svg" alt="fallback upload icon"/>
+                </object></span> Upload your file</label>
         </div>
         <progress id="progress" max=1 value=0></progress>
     </div>
@@ -40,7 +43,7 @@
                 <span><object type="image/svg+xml" data="download.svg">
                     <img src="download.svg" alt="fallback download icon"/>
                 </object></span>
-                <span></span> <span id="fileNameMaj"></span>
+                <span id="fileNameMaj"></span>
             </a>
         </div>
 
@@ -70,7 +73,7 @@
 
     function setEditorContentFull(txt, where = 0) {
         var range = editor.getSelection();
-        editor.setContents(txt, "api")
+        editor.setContents({ops: [{"insert": txt}]}, "api")
         if (range) {
             if (range.index > where)
                 editor.setSelection(range.index + 1, range.length, "api")
