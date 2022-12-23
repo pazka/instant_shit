@@ -1,4 +1,4 @@
-﻿rm -Rf build
+rm -Rf build
 mkdir build
 cp -r www build/www
 cp *.js build/
