@@ -17,4 +17,4 @@ services:
       - 12122:80
     restart: unless-stopped
     volumes:
-      - ./data:/data
+      - ./data-mom:/data
