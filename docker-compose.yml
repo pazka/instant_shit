@@ -3,7 +3,7 @@ version: '3.7'
 services:
   instant_shit:
     container_name: instantshit
-    image: pazka/instantshit
+    image: pazka/instantshit:latest
     ports:
       - 12121:80
     restart: unless-stopped
@@ -12,7 +12,7 @@ services:
 
   instant_shit_mom:
     container_name: instantshitMom
-    image: pazka/instantshit
+    image: pazka/instantshit:latest
     ports:
       - 12122:80
     restart: unless-stopped

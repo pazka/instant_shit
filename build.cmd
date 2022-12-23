@@ -1,6 +1,8 @@
 rm -Rf build
 mkdir build
 cp -r www build/www
+
+
 cp *.js build/
 cp *.json build/
 cp config.prod.json build/config.json
