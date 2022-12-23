@@ -61,6 +61,7 @@
 
 
     function setEditorContentDelta(val, where = 0) {
+        console.log(val,where)
         var range = editor.getSelection();
         editor.updateContents(val.delta, "api")
         if (range) {
@@ -71,9 +72,9 @@
         }
     }
 
-    function setEditorContentFull(txt, where = 0) {
+    function setEditorContentFull(quillObj, where = 0) {
         var range = editor.getSelection();
-        editor.setContents({ops: [{"insert": txt}]}, "api")
+        editor.setContents(quillObj, "api")
         if (range) {
             if (range.index > where)
                 editor.setSelection(range.index + 1, range.length, "api")
@@ -86,7 +87,7 @@
     editor.on('text-change', function (delta, oldDelta, source) {
         if (source === 'user') {
             socket.emit('txt_update', {
-                content: editor.getContents().ops[0].insert,
+                content: editor.getContents(),
                 delta: delta,
                 oldDelta: oldDelta,
                 source: source

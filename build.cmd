@@ -8,11 +8,6 @@ cp Dockerfile build/Dockerfile
 
 cd build
 
-docker build . --no-cache -t instantshit
+docker build . -t pazka/instantshit
 
-cd ..
-
-rm -Rf dist
-mkdir dist && cd dist && docker save instantshit > instantshit.tar && gzip -v instantshit.tar
-
-cd ..
+docker push pazka/instantshit

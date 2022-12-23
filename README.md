@@ -9,5 +9,8 @@ Go watch it in prod : [https://pad.hosh.it](https://pad.hosh.it)
 
 # Development
 
-build with ``build.cmd``
-deploy however you want but and example is in `deploy.cmd`
+build with `build.cmd`
+
+push the docker image however you want.
+
+deploy with `docker-compose up instant_shit`

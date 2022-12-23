@@ -15,7 +15,10 @@ var io = require('socket.io').listen(server);
 
 // enable files upload
 app.use(fileUpload({
-    createParentPath: true
+    createParentPath: true,
+    limits: {fileSize: config("MAX_FILE_SIZE")},
+    abortOnLimit: true,
+    responseOnLimit: `File too big, max is ${Math.round(config("MAX_FILE_SIZE") / (1024 * 1024))} Mo`
 }));
 //add other middleware
 app.use(cors(config('CORS')));
@@ -27,6 +30,7 @@ app.use('/', express.static(path.join(__dirname, "www")));
 
 let port = config('PORT',80)
 let name = config('NAME',"Instant Shit") 
+let dataDirectory = 'data'
 
 if (process.argv.includes('-p')) {
     port = process.argv[process.argv.findIndex(e => e === '-p') + 1]
@@ -34,6 +38,11 @@ if (process.argv.includes('-p')) {
 
 if (process.argv.includes('-t')) {
     name = process.argv[process.argv.findIndex(e => e === '-t') + 1]
+}
+
+//create data directory if it doesn't exist
+if (!fs.existsSync(dataDirectory)) {
+    fs.mkdirSync(dataDirectory);
 }
 
 // Quand un client se connecte, on le note dans la console
@@ -53,7 +62,7 @@ io.sockets.on('connection', function (socket) {
             io.to("global_room").emit('new_text', {from: socket.id, time: lastTextUpdate, error: `Text is too big ! Maximum length is ${config("MAX_TEXT_SIZE")}, yours is ${content.length}`})
             return
         }
-        currentText = content
+        currentQuillObj = content
         
         lastTextUpdate = Date.now();
         io.to("global_room").emit('new_text', {from: socket.id, time: lastTextUpdate, val: data})
@@ -65,7 +74,7 @@ io.sockets.on('connection', function (socket) {
     });
 });
 
-var currentText = "";
+var currentQuillObj = "";
 var currentFileName = "";
 var lastTextUpdate = Date.now();
 var lastFileUpdate = Date.now();
@@ -78,7 +87,7 @@ app.get('/all', (req, res) => res.send(
     {
         txt: {
             time: lastTextUpdate,
-            val: currentText
+            val: currentQuillObj
         },
         file: {
             time: lastFileUpdate,
@@ -87,7 +96,7 @@ app.get('/all', (req, res) => res.send(
     })
 )
 
-app.get('/file', (req, res) => res.download("./currentFile", currentFileName))
+app.get('/file', (req, res) => res.download("./data/currentFile", currentFileName))
 app.post('/newFile', async (req, res) => {
     try {
         if (!req.files) {
@@ -107,7 +116,7 @@ app.post('/newFile', async (req, res) => {
             }
 
             //Use the mv() method to place the file in upload directory (i.e. "uploads")
-            newFile.mv('./currentFile');
+            newFile.mv('./data/currentFile');
 
             //notify everyone
             currentFileName = newFile.name;
