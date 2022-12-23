@@ -7,7 +7,7 @@ services:
       - 12121:80
     restart: unless-stopped
     volumes:
-      - ./data:./data
+      - ./data:/data
 
   instant_shit_mom:
     image: pazka/instantshit
@@ -15,4 +15,4 @@ services:
       - 12122:80
     restart: unless-stopped
     volumes:
-      - ./data:./data
+      - ./data:/data
