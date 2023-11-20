@@ -4,8 +4,8 @@
     "NAME" : "${TITLE}",
     "PORT" : 80,
     "MAX_TEXT_SIZE" : 10000,
-    "_MAX_FILE_SIZE" : "2 * 1024 * 1024 * 1024 = 2147483648 bytes = 2Gio",
-    "MAX_FILE_SIZE" : 2147483648,
+    "_MAX_FILE_SIZE" : "10 * 1024 * 1024 * 1024 = 2147483648 bytes = 10Gio",
+    "MAX_FILE_SIZE" : 10737418240,
     "CORS" : [
       "*"
     ]

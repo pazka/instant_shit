@@ -10,6 +10,6 @@ cp Dockerfile build/Dockerfile
 
 cd build
 
-docker build . -t pazka/instantshit
+docker build . -t pazka/instantshit:latest
 
-docker push pazka/instantshit
+docker push pazka/instantshit:latest
