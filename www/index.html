@@ -6,7 +6,6 @@
     <title>Instant Shit</title>
     <link href="quill.snow.css" rel="stylesheet">
     <link href="style.css" rel="stylesheet">
-    <script src="tailwind.3.0.23.js"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 
@@ -14,7 +13,7 @@
 <div id="text-edit">
     <div class="section">
         <h1>Copy/Paste Text</h1>
-        <span>Last Text Update [</span><span id="txtMaj"></span><span>]</span>
+        <span class="update-info">Last update: <span id="txtMaj">never</span></span>
     </div>
     <span class="hidden" id="error"></span>
 
@@ -24,44 +23,46 @@
 <div id="file-management">
     <div class="section">
         <h1>Copy/Paste File</h1>
-        <span>Last File Update [</span> <span id="fileMaj"></span> <span>] </span>
+        <span class="update-info">Last update: <span id="fileMaj">never</span></span>
     </div>
 
-    <div id="upload-field-outer">
-        <div id="upload-field-inner">
-            <input onchange="handleFileUpdate()" type="file" name="newFile" id="new-file"/>
-            <label class="btn" for="new-file"> <span><object type="image/svg+xml" data="upload.svg">
-                    <img src="download.svg" alt="fallback upload icon"/>
-                </object></span> Upload your file</label>
+    <span class="hidden" id="file-error"></span>
+
+    <div id="drop-zone">
+        <input onchange="handleFileUpdate()" type="file" name="newFile" id="new-file"/>
+        <label for="new-file" id="drop-zone-label">
+            <img src="upload.svg" alt="upload icon" class="icon"/>
+            <span class="drop-main">Drag &amp; drop a file here</span>
+            <span class="drop-sub">or click to browse — max <span id="maxSize">2 Go</span></span>
+        </label>
+        <div id="upload-status" class="hidden">
+            <span id="upload-status-text">Uploading…</span>
+            <progress id="progress" max="1" value="0"></progress>
         </div>
-        <progress id="progress" max=1 value=0></progress>
     </div>
-    <div id="download-field">
 
-        <div>
-            <a class="btn" href="/file" id="download">
-                <span><object type="image/svg+xml" data="download.svg">
-                    <img src="download.svg" alt="fallback download icon"/>
-                </object></span>
+    <div id="download-field" class="hidden">
+        <a class="btn" href="/file" id="download">
+            <img src="download.svg" alt="download icon" class="icon"/>
+            <span class="file-infos">
                 <span id="fileNameMaj"></span>
-            </a>
-        </div>
-
+                <span id="fileSizeMaj" class="file-size"></span>
+            </span>
+        </a>
     </div>
+    <p id="no-file-yet">No file has been shared yet.</p>
 </div>
 
 <script src="socket.io.js"></script>
 <script src="quill.js"></script>
 <script>
 
-    //EDITOR INIT ##########################################################""
+    //EDITOR INIT ##########################################################
     var editor = new Quill('#current-text', {
         theme: 'snow'
     });
 
-
     function setEditorContentDelta(val, where = 0) {
-        console.log(val,where)
         var range = editor.getSelection();
         editor.updateContents(val.delta, "api")
         if (range) {
@@ -83,19 +84,17 @@
         }
     }
 
-
     editor.on('text-change', function (delta, oldDelta, source) {
         if (source === 'user') {
             socket.emit('txt_update', {
                 content: editor.getContents(),
                 delta: delta,
-                oldDelta: oldDelta,
                 source: source
             });
         }
     });
 
-    // SOCKET Send/receive ##################################################""
+    // SOCKET Send/receive ##################################################
     var mySocketId;
 
     const socket = io();
@@ -107,84 +106,154 @@
         mySocketId = id
     });
 
+    function fmtTime(t) {
+        return (new Date(t)).toLocaleDateString() + " " + (new Date(t)).toLocaleTimeString()
+    }
+
+    function fmtSize(bytes) {
+        if (!bytes && bytes !== 0) return ""
+        if (bytes >= 1024 * 1024 * 1024) return (bytes / (1024 * 1024 * 1024)).toFixed(2) + " Go"
+        if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " Mo"
+        if (bytes >= 1024) return (bytes / 1024).toFixed(1) + " Ko"
+        return bytes + " o"
+    }
+
+    function showError(elId, msg) {
+        const el = document.getElementById(elId)
+        el.innerText = msg || ""
+        el.className = msg ? "" : "hidden"
+    }
+
     socket.on("new_text", (txt) => {
-        document.getElementById("txtMaj").innerText = (new Date(txt.time)).toLocaleDateString() + " | " + (new Date(txt.time)).toLocaleTimeString()
-        if (txt.error)
-            document.getElementById("error").innerText = txt.error
-        document.getElementById("error").className = txt.error ? "" : "hidden"
+        document.getElementById("txtMaj").innerText = fmtTime(txt.time)
+        showError("error", txt.error)
+        if (txt.error) return
 
         if (txt.from === mySocketId) {
-            console.log("same socket, do nothing")
             return;
         }
 
-        //setEditorContentFull(txt.val.content, txt.val.delta?.ops[0]?.retain)
-        setEditorContentDelta(txt.val)
+        // after the server dropped throttled updates, deltas are unreliable:
+        // reload the full content instead
+        if (txt.resync) {
+            setEditorContentFull(txt.val.content)
+        } else {
+            setEditorContentDelta(txt.val)
+        }
     })
 
     socket.on("new_file", (file) => {
-        document.getElementById("fileMaj").innerText = (new Date(file.time)).toLocaleDateString() + " | " + (new Date(file.time)).toLocaleTimeString()
-        document.getElementById("fileNameMaj").innerText = file.val;
+        setFileInfo(file.val, file.size, file.time)
     })
 
-
-    //Data Manipulation #######################################################################
-    var fileInput = document.querySelector('#new-file'),
-        progress = document.querySelector('#progress')
-
-    function handleFileUpdate() {
-        sendFile()
+    function setFileInfo(name, size, time) {
+        const hasFile = !!name
+        document.getElementById("download-field").className = hasFile ? "" : "hidden"
+        document.getElementById("no-file-yet").className = hasFile ? "hidden" : ""
+        if (!hasFile) return
+        document.getElementById("fileMaj").innerText = fmtTime(time)
+        document.getElementById("fileNameMaj").innerText = name
+        document.getElementById("fileSizeMaj").innerText = fmtSize(size)
     }
 
-    function sendFile() {
+    //Upload #######################################################################
+    var fileInput = document.getElementById('new-file'),
+        progress = document.getElementById('progress'),
+        dropZone = document.getElementById('drop-zone'),
+        uploadStatus = document.getElementById('upload-status'),
+        uploadStatusText = document.getElementById('upload-status-text')
+
+    var maxFileSize = 2 * 1024 * 1024 * 1024
+    var uploading = false
+
+    function handleFileUpdate() {
+        if (fileInput.files.length > 0)
+            sendFile(fileInput.files[0])
+    }
+
+    function setUploading(state) {
+        uploading = state
+        dropZone.className = state ? "uploading" : ""
+        uploadStatus.className = state ? "" : "hidden"
+        document.getElementById("drop-zone-label").className = state ? "hidden" : ""
+        if (!state) fileInput.value = ""
+    }
+
+    function sendFile(file) {
+        showError("file-error", "")
+
+        if (uploading) {
+            showError("file-error", "An upload is already running, wait for it to finish")
+            return
+        }
+        if (file.size > maxFileSize) {
+            showError("file-error", "File too big ! Max is " + fmtSize(maxFileSize) + ", yours is " + fmtSize(file.size))
+            return
+        }
+
+        setUploading(true)
 
         var xhr = new XMLHttpRequest();
-
         xhr.open('POST', '/newFile');
 
         xhr.upload.addEventListener('progress', function (e) {
             progress.value = e.loaded;
             progress.max = e.total;
-        });
-
-        xhr.addEventListener('load', function () {
-            console.info("upload done")
+            if (e.total > 0)
+                uploadStatusText.innerText = "Uploading… " + Math.round(e.loaded / e.total * 100) + "% (" + fmtSize(e.loaded) + " / " + fmtSize(e.total) + ")"
         });
 
         xhr.onreadystatechange = () => {
-            // In local files, status is 0 upon success in Mozilla Firefox
             if (xhr.readyState === XMLHttpRequest.DONE) {
-                var status = xhr.status;
-                if (status === 0 || (status >= 200 && status < 400)) {
-                    // The request has been completed successfully
-                    processUploadResponse(xhr.responseText)
-                } else {
-                    console.error(xhr)
+                setUploading(false)
+                try {
+                    const res = JSON.parse(xhr.responseText)
+                    if (!res.status)
+                        showError("file-error", res.message || "Upload failed")
+                } catch (e) {
+                    showError("file-error", xhr.status === 429
+                        ? "Too many uploads, try again in a few minutes"
+                        : "Upload failed (" + (xhr.status || "network error") + "), try again")
                 }
             }
         }
 
         var form = new FormData();
-        form.append('newFile', fileInput.files[0]);
-
+        form.append('newFile', file);
         xhr.send(form);
     }
 
-    function processUploadResponse(data) {
-        const res = JSON.parse(data)
-        if (!res.status)
-            alert(res.message)
-    }
+    // Drag & drop #################################################################
+    ;['dragenter', 'dragover'].forEach(evt =>
+        dropZone.addEventListener(evt, e => {
+            e.preventDefault()
+            e.stopPropagation()
+            if (!uploading) dropZone.classList.add('drag-over')
+        }))
+    ;['dragleave', 'drop'].forEach(evt =>
+        dropZone.addEventListener(evt, e => {
+            e.preventDefault()
+            e.stopPropagation()
+            dropZone.classList.remove('drag-over')
+        }))
+    dropZone.addEventListener('drop', e => {
+        if (uploading) return
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0)
+            sendFile(e.dataTransfer.files[0])
+    })
+    // dropping anywhere else must not make the browser navigate away
+    window.addEventListener('dragover', e => e.preventDefault())
+    window.addEventListener('drop', e => e.preventDefault())
 
+    //Initial data ################################################################
     function getAllData() {
         var xhr = new XMLHttpRequest();
         xhr.onload = function () {
             if (xhr.status >= 200 && xhr.status < 300) {
                 let data = JSON.parse(xhr.responseText)
-                setEditorContentFull(data.txt.val)
-                document.getElementById("txtMaj").innerHTML = (new Date(data.txt.time)).toLocaleDateString() + " | " + (new Date(data.txt.time)).toLocaleTimeString()
-                document.getElementById("fileMaj").innerHTML = (new Date(data.file.time)).toLocaleDateString() + " | " + (new Date(data.file.time)).toLocaleTimeString()
-                document.getElementById("fileNameMaj").innerHTML = data.file.val;
+                if (data.txt.val) setEditorContentFull(data.txt.val)
+                document.getElementById("txtMaj").innerText = fmtTime(data.txt.time)
+                setFileInfo(data.file.val, data.file.size, data.file.time)
             }
         };
         xhr.open('GET', '/all');
@@ -193,12 +262,27 @@
 
     getAllData();
 
+    function getLimits() {
+        var xhr = new XMLHttpRequest();
+        xhr.onload = function () {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                try {
+                    maxFileSize = JSON.parse(xhr.responseText).maxFileSize
+                    document.getElementById("maxSize").innerText = fmtSize(maxFileSize)
+                } catch (e) { /* keep default */ }
+            }
+        };
+        xhr.open('GET', '/limits');
+        xhr.send();
+    }
+
+    getLimits()
+
     function getTitle() {
         var xhr = new XMLHttpRequest();
         xhr.onload = function () {
             if (xhr.status >= 200 && xhr.status < 300) {
-                let data = xhr.responseText
-                document.title = data
+                document.title = xhr.responseText
             }
         };
         xhr.open('GET', '/title');

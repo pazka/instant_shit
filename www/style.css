@@ -1,4 +1,3 @@
-
 body {
     --color-1: #E63946;
     --color-2: #F1FAEE;
@@ -7,88 +6,92 @@ body {
     --color-5: #1D3557;
 
     --color-1-dark: #8f232b;
-    --color-2-dark: #9ca29a;
-    --color-3-dark: #668385;
     --color-4-dark: #294a5f;
     --color-5-dark: #15253c;
 
     display: flex;
     flex-wrap: wrap;
-    font-family: "Calibri";
-
-    color: black !important;
-    fill: black !important;
-    background-image: linear-gradient(60deg, var(--color-5) 0%, var(--color-3) 80%, var(--color-1) 100%);
-    min-height:100vh;
-    height:fit-content;
-}
-
-body > * {
-    margin: 2em;
+    gap: 2em;
+    margin: 0;
     padding: 2em;
-    border-radius: 1em;
+    box-sizing: border-box;
+    font-family: "Segoe UI", "Calibri", system-ui, sans-serif;
 
-    box-shadow: 0.2em 0.2em 0.2em;
-
-    transition: all 0.5s;
-    background-color: white;
-    max-width: 85%;
+    color: var(--color-5);
+    background-image: linear-gradient(60deg, var(--color-5) 0%, var(--color-3) 80%, var(--color-1) 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
+    height: fit-content;
 }
 
-body > *:hover {
+.hidden {
+    display: none !important;
+}
 
-    box-shadow: 5px 5px 1em;
+body > div {
+    padding: 1.5em 2em;
+    border-radius: 1em;
+    box-shadow: 0.2em 0.2em 0.6em rgba(21, 37, 60, 0.4);
+    transition: box-shadow 0.3s;
+    background-color: white;
+    box-sizing: border-box;
+}
 
-    transition: all 0.5s;
+body > div:hover {
+    box-shadow: 0.3em 0.3em 1em rgba(21, 37, 60, 0.55);
 }
 
 .section {
-    margin-bottom: 2em;
-    font-weight: bolder;
-    font-size: 1.2em;
+    margin-bottom: 1.5em;
 }
-.ql-container{
-    height:auto ;
+
+.section h1 {
+    margin: 0 0 0.2em 0;
+    font-size: 1.4em;
+    color: var(--color-5);
 }
-.ql-editor{
-    min-height:60vh ;
+
+.update-info {
+    font-size: 0.85em;
+    color: var(--color-4);
 }
+
+/* ---------- text pad ---------- */
+
+.ql-container {
+    height: auto;
+}
+
+.ql-editor {
+    min-height: 60vh;
+}
+
 #text-edit {
     flex-grow: 2;
     flex-shrink: 2;
     flex-basis: 60%;
-    max-height:90vh;
+    max-height: 90vh;
     height: fit-content;
-    overflow-y:auto;
+    overflow-y: auto;
 }
+
+#error, #file-error {
+    display: block;
+    color: var(--color-1);
+    font-weight: bolder;
+    margin-bottom: 1em;
+}
+
+/* ---------- file panel ---------- */
 
 #file-management {
     flex-grow: 1;
     flex-shrink: 1;
     flex-basis: 30%;
-    align-items: center;
-    align-content: center;
     height: fit-content;
 }
 
-#file-management #upload-field-outer {
-    position: relative;
-}
-
-#file-management #upload-field-inner {
-    position: relative;
-    height: 10vh;
-}
-
-#file-management #upload-field-inner > * {
-    position: absolute;
-    top: 0;
-}
-
-#file-management > * {
-}
-
-#file-management input {
+#file-management input[type="file"] {
     width: 1px;
     height: 1px;
     opacity: 0;
@@ -97,94 +100,122 @@ body > *:hover {
     z-index: -1;
 }
 
-.btn svg, .btn img, .btn object {
-    width: 5em;
-    height: auto;
-    color: var(--color-1);
-    fill: var(--color-1);
+#drop-zone {
+    border: 3px dashed var(--color-4);
+    border-radius: 0.8em;
+    background-color: var(--color-2);
+    padding: 1.5em;
+    text-align: center;
+    transition: all 0.2s;
+    margin-bottom: 1.5em;
+}
+
+#drop-zone.drag-over {
+    border-color: var(--color-1);
+    background-color: var(--color-3);
+    transform: scale(1.02);
+}
+
+#drop-zone.uploading {
+    border-style: solid;
+    cursor: progress;
+}
+
+#drop-zone-label {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5em;
     cursor: pointer;
 }
 
+#drop-zone .icon {
+    width: 4em;
+    height: 4em;
+}
+
+#drop-zone .drop-main {
+    font-weight: bold;
+    font-size: 1.1em;
+    color: var(--color-5);
+}
+
+#drop-zone .drop-sub {
+    font-size: 0.85em;
+    color: var(--color-4);
+}
+
+#upload-status {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6em;
+    align-items: center;
+}
+
+#upload-status progress {
+    width: 100%;
+    height: 1em;
+    accent-color: var(--color-4);
+}
+
+#no-file-yet {
+    color: var(--color-4);
+    font-style: italic;
+}
+
+/* ---------- download button ---------- */
+
 .btn {
     display: flex;
+    align-items: center;
+    gap: 1em;
     cursor: pointer;
     font-weight: bold;
-    padding: .5em 1em;
-    border-radius: 0.2em;
-    width: 100%;
-
-
-    align-items: center;
-
-    background-color: var(--color-3);
+    color: var(--color-2);
+    text-decoration: none;
+    padding: 0.8em 1.2em;
+    border-radius: 0.5em;
+    background-color: var(--color-4);
     background-image: linear-gradient(45deg, var(--color-4), var(--color-4), rgba(0, 0, 0, 0));
-
-    box-shadow: 3px 3px 0 3px var(--color-4-dark);
-
-    transition: all .5s
+    box-shadow: 3px 3px 0 1px var(--color-4-dark);
+    transition: all 0.3s;
 }
 
 .btn:hover {
     background-color: var(--color-1);
-
-    box-shadow: 1px 1px 0 1px var(--color-4-dark);
-
-    transition: all .5s;
+    background-image: linear-gradient(45deg, var(--color-1), var(--color-1), rgba(0, 0, 0, 0));
+    box-shadow: 1px 1px 0 1px var(--color-1-dark);
 }
 
-.btn #fileNameMaj{
-    max-width : 100%;
-    overflow-x:hidden;
+.btn .icon {
+    width: 3em;
+    height: 3em;
+    flex-shrink: 0;
+    filter: invert(1); /* black svg on a colored button */
 }
 
-@keyframes hover {
-    from {
-        position: relative;
-        bottom: 0;
-    }
-    to {
-        position: relative;
-        bottom: 0.5em;
-    }
+.btn .file-infos {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2em;
+    min-width: 0;
 }
 
-.btn + .ready {
-    margin: 1em;
-    border-radius: 0.5rem;
-    transition: all 1s;
-    animation: hover 1s alternate-reverse infinite ease-in-out;
+.btn #fileNameMaj {
+    max-width: 100%;
+    overflow-wrap: anywhere;
 }
 
-#file-management progress {
-    width: 100%;
-}
-
-#file-management progress, progress::-moz-progress-bar, progress::-webkit-progress-value {
-    background: blue;
-    color: blue;
-}
-
-#error {
-    color: var(--color-1);
-    opacity:1;
-    font-weight: bolder;
-    position: relative;
-    bottom: 0;
-    transition: all 1s;
-    min-width : 5em;
-    min-height : 2em;
-}
-
-#error .hidden {
-    opacity:0;
-    position: relative;
-    bottom: 1em;
-    transition: all 1s;
+.btn .file-size {
+    font-size: 0.8em;
+    font-weight: normal;
+    opacity: 0.85;
 }
 
 @media (max-aspect-ratio: 1/1) {
     body {
         display: flex;
         flex-direction: column;
+        padding: 1em;
     }
 }
