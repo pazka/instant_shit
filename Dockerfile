@@ -1,4 +1,4 @@
-FROM node
+FROM node:20-alpine
 
 WORKDIR /
 COPY ./package.json ./package-lock.json ./
@@ -8,8 +8,8 @@ COPY . .
 # the image must always run with the production config (port 80, real limits)
 RUN cp config.prod.json config.json
 
-ENV PORT 80
+ENV PORT=80
 EXPOSE 80
-ENV TITLE QuickPaste
+ENV TITLE=QuickPaste
 
 CMD ["npm", "start"]
