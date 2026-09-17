@@ -10,7 +10,9 @@ const bodyParser = require('body-parser');
 const morgan = require('morgan');
 var fs = require('fs');
 
-var io = require('socket.io').listen(server);
+// maxHttpBufferSize caps a single socket message, so a huge payload
+// can't blow up memory before the text-size check runs
+var io = require('socket.io')(server, {maxHttpBufferSize: 1e6});
 
 const MAX_FILE_SIZE = config("MAX_FILE_SIZE")
 const MAX_TEXT_SIZE = config("MAX_TEXT_SIZE")
