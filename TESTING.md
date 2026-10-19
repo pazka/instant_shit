@@ -34,7 +34,7 @@ hardened, upload/download, engine.io handshake, file kept across `docker restart
 
 ## Upgrades checked (2026-10-19)
 
-- **Node 20 → 26** (Dependabot #3): tests 5/5 on 26.12, hardened smoke OK on `node:26-alpine` → **go**.
+- **Node 20 → 26** (Dependabot #3): tests 5/5 on 26.12, hardened smoke OK on `node:26-alpine` → **applied** (Dockerfile on `node:26-alpine`).
 
 ## Notes (not changed)
 
