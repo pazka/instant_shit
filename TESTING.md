@@ -23,11 +23,15 @@ PRs, `master`, `agent/**`: `server tests (node 20|26)` and `container smoke`.
 
 ## What is covered
 
-`test/server.test.js` (5 tests, Node built-ins; `test/sio-poll.js` is a tiny Socket.IO long-polling client
+`test/server.test.js` (8 tests, Node built-ins; `test/sio-poll.js` is a tiny Socket.IO long-polling client
 on `fetch`): page, `/socket.io/socket.io.js`, `/title`, `/limits`, `/all`, `/file` 404; upload 400 / 200 /
 download with the original name / `new_file` broadcast / both 413 paths; notepad `my-id`, `txt_update` →
 `new_text` to every client, text size limit to the sender only; state restored after a restart
-(`meta.json`, `currentFile`, `currentText.json`); upload rate limit (15 per 10 min → 429).
+(`meta.json`, `currentFile`, `currentText.json`); upload rate limit (15 per 10 min → 429); Express default
+404/400/415/416 error pages, case-insensitive routes with optional trailing slash, static `index.html` /
+dotfile / traversal fallbacks, CORS preflight; `/file` `Content-Disposition` byte-for-byte (quoted name, latin1
+`?` fallback + `filename*`), HEAD and ranges; draft-6 `RateLimit-*` headers, one bucket per client IP via
+`X-Forwarded-For` (IPv6 addresses not grouped by subnet).
 
 `scripts/smoke.sh`: the built image with the production config (`QuickPaste`, 2 GiB / 100 000 limits),
 hardened, upload/download, engine.io handshake, file kept across `docker restart`.
