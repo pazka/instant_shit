@@ -110,6 +110,7 @@ const uploadLimiter = rateLimit({
     max: 15, // uploads per IP per 10 minutes
     standardHeaders: true,
     legacyHeaders: false,
+    ipv6Subnet: false, // one bucket per IPv6 address, as before express-rate-limit 8 (which groups by /56)
     message: {status: false, message: "Too many uploads, try again in a few minutes"}
 })
 // rate-limit before the body is even read, so spam costs nothing
@@ -130,6 +131,7 @@ const downloadLimiter = rateLimit({
     max: 30, // downloads per IP per minute
     standardHeaders: true,
     legacyHeaders: false,
+    ipv6Subnet: false,
     message: {status: false, message: "Too many downloads, slow down"}
 })
 
@@ -214,8 +216,30 @@ app.get('/file', downloadLimiter, (req, res) => {
     if (!currentFileMeta.name || !fs.existsSync(currentFilePath)) {
         return res.status(404).send({status: false, message: "No file has been uploaded yet"})
     }
-    res.download(currentFilePath, currentFileMeta.name)
+    // what res.download did in Express 4; Express 5's res.download 404s when DATA_DIR has a dot-directory
+    // anywhere in its path and formats Content-Disposition differently (unquoted names, "?" fallback)
+    res.sendFile(path.resolve(currentFilePath), {
+        dotfiles: 'allow',
+        headers: {'Content-Disposition': contentDisposition(currentFileMeta.name)}
+    })
 })
+
+// Content-Disposition exactly as Express 4 sent it (content-disposition 0.5.4, MIT, jshttp), type "attachment"
+function contentDisposition(filename) {
+    const name = path.basename(filename)
+    const isQuotedString = /^[\x20-\x7e\x80-\xff]+$/.test(name)
+    const fallbackName = name.replace(/[^\x20-\x7e\xa0-\xff]/g, '?') // latin1 fallback
+    const hasFallback = fallbackName !== name
+    let header = 'attachment'
+    if (isQuotedString || hasFallback) {
+        header += '; filename="' + (hasFallback ? fallbackName : name).replace(/([\\"])/g, '\\$1') + '"'
+    }
+    if (hasFallback || !isQuotedString || /%[0-9A-Fa-f]{2}/.test(name)) {
+        header += "; filename*=UTF-8''" + encodeURIComponent(name)
+            .replace(/[\x00-\x20"'()*,/:;<=>?@[\\\]{}\x7f]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase())
+    }
+    return header
+}
 
 app.post('/newFile', async (req, res) => {
     try {

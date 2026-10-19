@@ -39,6 +39,14 @@ hardened, upload/download, engine.io handshake, file kept across `docker restart
 ## Upgrades checked (2026-10-19)
 
 - **Node 20 → 26** (Dependabot #3): tests 5/5 on 26.12, hardened smoke OK on `node:26-alpine` → **applied** (Dockerfile on `node:26-alpine`).
+- **Express 4.22 → 5.3, body-parser 1.20 → 2.3, express-rate-limit 7.5 → 8.7** (Dependabot #11, #9, #10, one
+  branch): tests 8/8 on node 20 and 26, smoke OK → **applied** with `server.js` keeping the old behaviour:
+  `/file` uses `res.sendFile` with `dotfiles: 'allow'` (Express 5's `res.download` 404s when the data path
+  contains a dot-directory, e.g. the tests' `.test-data-*`) and the Express 4 `Content-Disposition` format
+  (Express 5 unquotes token-only names and uses `?` fallbacks differently); rate limiters set
+  `ipv6Subnet: false` (v8 groups IPv6 clients by /56). Remaining differences, not observable by the page:
+  static `charset=utf-8` instead of `UTF-8` (case-insensitive), dev-mode error-page stack traces, and
+  express-rate-limit 8 keys an IPv4-mapped IPv6 address (`::ffff:a.b.c.d`) as `a.b.c.d`.
 
 ## Notes (not changed)
 
