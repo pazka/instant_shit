@@ -1,0 +1,9 @@
+node_modules
+data
+data-*
+.test-data-*
+test
+scripts
+.git
+.github
+.idea
