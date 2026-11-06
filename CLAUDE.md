@@ -5,7 +5,7 @@ Deployed twice from the same image (docker-compose.yml). Owner: Alexandre (pazka
 
 ## Maintenance (autonomous agent)
 Goal: keep the base image, dependencies and Actions current **without changing behaviour**.
-- **Gate = `ci` green**: `server tests (node 20|26)` + `container smoke`.
+- **Gate = `ci` green**: `server tests (node 26)` + `container smoke` (incl. the Node guardrail `scripts/check-node-version.sh`).
 - **Branches**: work on `agent/<topic>`; CI runs without a PR. Never push to `master` (`deploy.yml` /
   `release.yml` publish from it), never tag. **The owner merges.**
 - **Dependabot PRs**: green → summarise risk in a PR comment. Red → reproduce per TESTING.md, smallest fix on

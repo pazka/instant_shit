@@ -7,19 +7,24 @@ Actions): it pins what the shared paste page does today so a Dependabot PR is ju
 
 ```bash
 # server tests: black-box, spawns `node server.js` (DEV config.json, DATA_DIR in a temp dir)
-docker run --rm -v "$PWD":/src:ro node:20-alpine sh -c \
+docker run --rm -v "$PWD":/src:ro node:26-alpine sh -c \
   'mkdir /a && cd /src && tar --exclude=./node_modules --exclude=./data -cf - . | tar -xf - -C /a && cd /a \
    && npm ci && node --test --test-reporter=spec test/server.test.js'
 
 # container smoke (hardened: uid 1000, read-only rootfs, /data volume, restart)
 docker build -t instantshit:smoke . && bash scripts/smoke.sh instantshit:smoke
+
+# Node runtime guardrail (fails on EOL Node or below the patched minimum, CVE-2026-111497)
+bash scripts/check-node-version.sh instantshit:smoke
 ```
 
 (Windows Git Bash: prefix `docker run` with `MSYS_NO_PATHCONV=1`, mount `"$(cygpath -w "$PWD")"`.)
 
 ## CI (`.github/workflows/ci.yml`)
 
-PRs, `master`, `agent/**`: `server tests (node 20|26)` and `container smoke`.
+PRs, `master`, `agent/**`: `server tests (node 26)` and `container smoke` (which also runs
+`scripts/check-node-version.sh` on the built image and checks that it rejects `node:24.21.0-alpine`).
+`release.yml` and `deploy.yml` run the same guardrail on the candidate image before anything is pushed.
 
 ## What is covered
 
@@ -47,6 +52,10 @@ hardened, upload/download, engine.io handshake, file kept across `docker restart
   `ipv6Subnet: false` (v8 groups IPv6 clients by /56). Remaining differences, not observable by the page:
   static `charset=utf-8` instead of `UTF-8` (case-insensitive), dev-mode error-page stack traces, and
   express-rate-limit 8 keys an IPv4-mapped IPv6 address (`::ffff:a.b.c.d`) as `a.b.c.d`.
+
+- **Node 26.13.0** (2026-11-06, hosh-management#5, CVE-2026-111497 fixed in 26.12.1): base image pinned to
+  `node:26.13.0-alpine@sha256:…` (Dependabot `docker` bumps tag and digest), Node 20 dropped from the test
+  matrix (EOL).
 
 ## Notes (not changed)
 
