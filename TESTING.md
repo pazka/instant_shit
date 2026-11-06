@@ -14,6 +14,9 @@ docker run --rm -v "$PWD":/src:ro node:26-alpine sh -c \
 # container smoke (hardened: uid 1000, read-only rootfs, /data volume, restart)
 docker build -t instantshit:smoke . && bash scripts/smoke.sh instantshit:smoke
 
+# compose modes: the box's legacy compose today (uid 1000, :80 on 127.0.0.1:12121, bind mount ./data)
+bash scripts/smoke-compose.sh legacy instantshit:smoke
+
 # Node runtime guardrail (fails on EOL Node or below the patched minimum, CVE-2026-111497)
 bash scripts/check-node-version.sh instantshit:smoke
 ```
@@ -40,6 +43,11 @@ dotfile / traversal fallbacks, CORS preflight; `/file` `Content-Disposition` byt
 
 `scripts/smoke.sh`: the built image with the production config (`QuickPaste`, 2 GiB / 100 000 limits),
 hardened, upload/download, engine.io handshake, file kept across `docker restart`.
+
+`scripts/smoke-compose.sh legacy`: the box's legacy compose verbatim (only the image differs): production config,
+notepad edit over Socket.IO seen by a second client, upload/download round-trip (`scripts/capability.js`, needs
+`node` on the host), files in the bind mount owned by uid 1000 with an empty `tmp/`, text and file still served
+after `restart` and after `down`/`up`, nothing written outside `/data`, clean logs.
 
 ## Upgrades checked (2026-10-19)
 
