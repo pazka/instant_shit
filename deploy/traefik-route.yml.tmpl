@@ -1,0 +1,22 @@
+# Rendered by hosh-deploy on the first deploy (copied at `register`) into
+# /root/hosh-deploy/edge/traefik/dynamic/instantshit.yml. @@TOKENS@@ are filled on the box.
+# hosh.it box standard: edge Traefik (host network, file provider) → loopback port of the container.
+# REVERT = delete this file (Traefik hot-reloads the directory).
+http:
+  routers:
+    instantshit:
+      rule: "Host(`@@HOST@@`)"
+      service: instantshit
+      entryPoints: [@@ENTRYPOINT@@]
+      middlewares: [instantshit-hsts]
+      tls: @@TLS@@
+  middlewares:
+    instantshit-hsts:
+      headers:
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+  services:
+    instantshit:
+      loadBalancer:
+        servers:
+          - url: "http://@@BIND@@"

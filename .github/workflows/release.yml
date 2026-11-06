@@ -18,7 +18,12 @@ name: release
 #   secrets.DOKPLOY_WEBHOOK  Dokploy deploy-webhook URL, POSTed after :latest is pushed.
 #                         Unset/empty = a notice is printed and the run still succeeds.
 #
-# The build-scan-push workflow (deploy.yml) is untouched: it keeps pushing :ci + :<sha> only.
+#   secrets.HOSH_DEPLOY_KEY  hosh-deploy deployer key (box standard, DEPLOY.md). Unset (until the cutover) =
+#                         the deploy job only prints a notice. Set: every vX.Y.Z tag (not prereleases, not
+#                         branch mode) is deployed to pad.hosh.it by hosh-deploy, which rolls back by itself.
+#   vars.HOSH_AUTODEPLOY  'false' = no deploy after a release (Actions -> deploy still works by hand).
+#
+# The build-scan-push workflow (build-scan-push.yml) is untouched: it keeps pushing :ci + :<sha> only.
 on:
   push:
     tags: ['v*']
@@ -37,6 +42,9 @@ jobs:
     # Tag pushes and manual runs always go; branch pushes only when DEPLOY_TRIGGER == 'main'.
     if: github.event_name != 'push' || github.ref_type == 'tag' || vars.DEPLOY_TRIGGER == 'main'
     runs-on: ubuntu-latest
+    outputs:
+      primary: ${{ steps.meta.outputs.primary }}
+      deploy: ${{ steps.meta.outputs.deploy }}
     steps:
       - uses: actions/checkout@v7
       - name: compute release tags
@@ -61,6 +69,9 @@ jobs:
             primary="main-${SHA:0:7}"
             latest=true
           fi
+          # hosh-deploy: only final release tags vX.Y.Z (never prereleases or branch builds)
+          if [ "$REF_TYPE" = "tag" ] && printf '%s' "$REF_NAME" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then deploy=true; else deploy=false; fi
+          echo "deploy=$deploy" >> "$GITHUB_OUTPUT"
           echo "primary=$primary" >> "$GITHUB_OUTPUT"
           echo "latest=$latest" >> "$GITHUB_OUTPUT"
           echo "release tags: :$primary :$SHA (latest=$latest)"
@@ -84,6 +95,10 @@ jobs:
           severity: CRITICAL
           exit-code: ${{ vars.TRIVY_POLICY == 'warn' && '0' || '1' }}
           ignore-unfixed: true
+      - name: Container smoke, legacy compose + hosh-deploy compose (before any push)
+        run: |
+          bash scripts/smoke-compose.sh legacy ghcr.io/pazka/instantshit:candidate
+          bash scripts/smoke-compose.sh template ghcr.io/pazka/instantshit:candidate
       - name: push release tags
         env:
           PRIMARY: ${{ steps.meta.outputs.primary }}
@@ -112,3 +127,13 @@ jobs:
             exit 0
           fi
           curl -fsS -X POST "$DOKPLOY_WEBHOOK"
+
+  # Box standard (Decision #16): a vX.Y.Z release goes live on pad.hosh.it through hosh-deploy, which verifies
+  # it and rolls back by itself. No-op (notice) while the repo has no HOSH_DEPLOY_KEY secret (before the cutover).
+  deploy:
+    needs: release
+    if: needs.release.outputs.deploy == 'true' && vars.HOSH_AUTODEPLOY != 'false'
+    uses: ./.github/workflows/deploy.yml
+    with:
+      version: ${{ needs.release.outputs.primary }}
+    secrets: inherit

@@ -16,6 +16,10 @@ docker build -t instantshit:smoke . && bash scripts/smoke.sh instantshit:smoke
 
 # compose modes: the box's legacy compose today (uid 1000, :80 on 127.0.0.1:12121, bind mount ./data)
 bash scripts/smoke-compose.sh legacy instantshit:smoke
+# ... and the hosh-deploy compose (docker-compose.example.yml + .env.example: uid 10001, read-only, PORT=8000,
+# volume instantshit-data — refuses to run if that volume already exists) incl. register validation + POST_DEPLOY
+bash scripts/smoke-compose.sh template instantshit:smoke
+bash scripts/check-hosh-deploy.sh     # what `hosh-deploy register` validates (also run by the template smoke)
 
 # Node runtime guardrail (fails on EOL Node or below the patched minimum, CVE-2026-111497)
 bash scripts/check-node-version.sh instantshit:smoke
@@ -26,13 +30,15 @@ bash scripts/check-node-version.sh instantshit:smoke
 ## CI (`.github/workflows/ci.yml`)
 
 PRs, `master`, `agent/**`: `server tests (node 26)` and `container smoke` (which also runs
-`scripts/check-node-version.sh` on the built image and checks that it rejects `node:24.21.0-alpine`).
-`release.yml` and `deploy.yml` run the same guardrail on the candidate image before anything is pushed.
+`scripts/check-node-version.sh` on the built image and checks that it rejects `node:24.21.0-alpine`, then
+`smoke.sh` and `smoke-compose.sh legacy|template`).
+`release.yml` and `build-scan-push.yml` run the same guardrail on the candidate image before anything is pushed;
+`deploy.yml` is the hosh-deploy deploy (DEPLOY.md), a no-op while the repo has no `HOSH_DEPLOY_KEY`.
 
 ## What is covered
 
-`test/server.test.js` (8 tests, Node built-ins; `test/sio-poll.js` is a tiny Socket.IO long-polling client
-on `fetch`): page, `/socket.io/socket.io.js`, `/title`, `/limits`, `/all`, `/file` 404; upload 400 / 200 /
+`test/server.test.js` (9 tests, Node built-ins; `test/sio-poll.js` is a tiny Socket.IO long-polling client
+on `fetch`): `/healthz` (GET/HEAD, shape, no probe file left), page, `/socket.io/socket.io.js`, `/title`, `/limits`, `/all`, `/file` 404; upload 400 / 200 /
 download with the original name / `new_file` broadcast / both 413 paths; notepad `my-id`, `txt_update` →
 `new_text` to every client, text size limit to the sender only; state restored after a restart
 (`meta.json`, `currentFile`, `currentText.json`); upload rate limit (15 per 10 min → 429); Express default
@@ -48,6 +54,11 @@ hardened, upload/download, engine.io handshake, file kept across `docker restart
 notepad edit over Socket.IO seen by a second client, upload/download round-trip (`scripts/capability.js`, needs
 `node` on the host), files in the bind mount owned by uid 1000 with an empty `tmp/`, text and file still served
 after `restart` and after `down`/`up`, nothing written outside `/data`, clean logs.
+`scripts/smoke-compose.sh template`: the same checks with `docker-compose.example.yml` + `.env.example` as
+hosh-deploy runs them (fresh named volume, uid 10001, read-only, pids 128, mem 512m), plus the register
+validation (`scripts/check-hosh-deploy.sh`), healthcheck `healthy`, `/healthz` (GET + HEAD), the `POST_DEPLOY`
+command of `deploy/hosh-deploy.conf` inside the container (`checks/postdeploy.js`, read-only), and a 1 GiB
+upload/download under the 512m limit without OOM. Both modes also run in `release.yml` before anything is pushed.
 
 ## Upgrades checked (2026-10-19)
 
@@ -68,6 +79,7 @@ after `restart` and after `down`/`up`, nothing written outside `/data`, clean lo
 ## Notes (not changed)
 
 - No authentication by design: anyone with the URL can read and replace the paste and the file.
-- Image runs as root by default (works as uid 1000, see the smoke); no HEALTHCHECK.
+- Image runs as root by default (works as uid 1000 and 10001, see the smokes). HEALTHCHECK on `/healthz` since
+  the hosh-deploy migration (`PORT` and `DATA_DIR` from env, defaults 80 and `/data` = legacy compose).
 - `.gitignore` had `.idea` and `data/` merged on one line (`.ideadata/`), so neither was ignored; fixed.
   `.dockerignore` added so a local `data/` (pastes) or tests never end up in the image.

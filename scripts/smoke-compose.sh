@@ -6,14 +6,20 @@
 #     = the box's legacy compose today (/root/hosh-deploy/instantshit): uid 1000, port 80 published on
 #       127.0.0.1:12121, cap_drop ALL, no-new-privileges, unprivileged-port sysctl, bind mount ./data:/data.
 #
+#   bash scripts/smoke-compose.sh template IMAGE
+#     = docker-compose.example.yml + .env.example as hosh-deploy runs them (only APP_IMAGE differs): uid 10001,
+#       read-only rootfs, tmpfs /tmp, pids 128, mem 512m, PORT=8000 on 127.0.0.1:9136, fresh named volume
+#       instantshit-data. Adds: the register validation, healthy healthcheck, /healthz, the POST_DEPLOY
+#       command of deploy/hosh-deploy.conf inside the container, a 1 GiB upload/download under the 512m limit.
+#
 # Checks: production config, Socket.IO notepad edit seen by a 2nd client, upload/download round-trip,
 # the data lands in the bind mount (currentFile, meta.json, currentText.json, tmp/), text + file are
 # still served after a container restart and after down/up, nothing written outside /data, clean logs.
 # Needs docker (compose v2), curl and node (for scripts/capability.js) on the host.
 set -euo pipefail
 
-MODE="${1:?usage: smoke-compose.sh legacy IMAGE}"
-IMAGE="${2:?usage: smoke-compose.sh legacy IMAGE}"
+MODE="${1:?usage: smoke-compose.sh legacy|template IMAGE}"
+IMAGE="${2:?usage: smoke-compose.sh legacy|template IMAGE}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$(mktemp -d)"
 MARKER="smoke-$$-$RANDOM"
@@ -49,11 +55,26 @@ services:
 YML
     # on the box ./data belongs to uid 1000
     dk run --rm --user 0 -v "$WORK/data:/data" --entrypoint sh "$IMAGE" -c 'chown 1000:1000 /data'
+    USER_WANT=1000:1000
+    ;;
+  template)
+    PORT=9136; CONTAINER=instantshit; PROJECT=instantshit
+    cp "$ROOT/docker-compose.example.yml" "$WORK/docker-compose.yml"
+    sed "s|^APP_IMAGE=.*|APP_IMAGE='$IMAGE'|" "$ROOT/.env.example" > "$WORK/instantshit.env"
+    chmod 600 "$WORK/instantshit.env"
+    dk volume inspect instantshit-data >/dev/null 2>&1 && fail "volume instantshit-data already exists here: refusing to touch it"
+    USER_WANT=10001:10001
     ;;
   *) fail "unknown mode '$MODE'" ;;
 esac
 BASE="http://127.0.0.1:${PORT}"
-compose() { dk compose -p "$PROJECT" --project-directory "$WORK" -f "$WORK/docker-compose.yml" "$@"; }
+compose() {
+  if [ "$MODE" = template ]; then  # as hosh-deploy: the env file serves interpolation and the container
+    dk compose -p "$PROJECT" --project-directory "$WORK" --env-file "$WORK/instantshit.env" -f "$WORK/docker-compose.yml" "$@"
+  else
+    dk compose -p "$PROJECT" --project-directory "$WORK" -f "$WORK/docker-compose.yml" "$@"
+  fi
+}
 
 cleanup() {
   if [ "${SMOKE_OK:-0}" != 1 ]; then echo "---- container log ----"; dk logs "$CONTAINER" 2>&1 | tail -n 40 || true; fi
@@ -74,10 +95,29 @@ wait_up() {
   fail "not listening on $BASE after 60s"
 }
 
+if [ "$MODE" = template ]; then
+  step "hosh-deploy register validation"
+  bash "$ROOT/scripts/check-hosh-deploy.sh" "$WORK"
+fi
+
 step "compose up $IMAGE"
 compose up -d --quiet-pull 2>&1 | grep -v -E "^ (Network|Container) " || true
 wait_up
-[ "$(dk inspect --format '{{.Config.User}}' "$CONTAINER")" = "1000:1000" ] || fail "not running as 1000:1000"
+[ "$(dk inspect --format '{{.Config.User}}' "$CONTAINER")" = "$USER_WANT" ] || fail "not running as $USER_WANT"
+
+if [ "$MODE" = template ]; then
+  step "hardening as configured, healthcheck healthy, /healthz"
+  [ "$(dk inspect --format '{{.HostConfig.ReadonlyRootfs}} {{.HostConfig.PidsLimit}} {{.HostConfig.Memory}}' "$CONTAINER")" = "true 128 536870912" ] \
+    || fail "hardening: $(dk inspect --format '{{.HostConfig.ReadonlyRootfs}} {{.HostConfig.PidsLimit}} {{.HostConfig.Memory}}' "$CONTAINER")"
+  for _ in $(seq 1 40); do
+    h="$(dk inspect --format '{{.State.Health.Status}}' "$CONTAINER")"; [ "$h" = healthy ] && break; sleep 2
+  done
+  [ "$h" = healthy ] || fail "healthcheck: $h"
+  code 200 "$BASE/healthz"
+  python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["status"]=="ok" and d["dataWritable"] is True and d["file"] is None, d' "$WORK/body.out" \
+    || fail "healthz: $(cat "$WORK/body.out")"
+  code 200 -I "$BASE/healthz"
+fi
 
 step "page and production config"
 code 200 "$BASE/"
@@ -89,15 +129,33 @@ code 200 "$BASE/limits"
 [ "$(cat "$WORK/body.out")" = '{"maxFileSize":2147483648,"maxTextSize":100000}' ] || fail "limits: $(cat "$WORK/body.out")"
 code 404 "$BASE/file"
 
+if [ "$MODE" = template ]; then
+  step "POST_DEPLOY (deploy/hosh-deploy.conf) inside the container"
+  read -r -a post <<<"$(sed -n 's/^POST_DEPLOY=//p' "$ROOT/deploy/hosh-deploy.conf")"
+  [ "${#post[@]}" -gt 0 ] || fail "POST_DEPLOY empty"
+  dk exec "$CONTAINER" "${post[@]}" || fail "POST_DEPLOY"
+
+  step "1 GiB upload + download under mem_limit 512m (streams through /data/tmp, not RAM or the 16m /tmp)"
+  head -c 1073741824 /dev/urandom > "$WORK/big.bin"
+  code 200 -F "newFile=@$WORK/big.bin" "$BASE/newFile"
+  grep -q '"size":1073741824' "$WORK/body.out" || fail "big upload: $(cat "$WORK/body.out")"
+  curl -fsS -o "$WORK/big.dl" "$BASE/file"
+  cmp -s "$WORK/big.bin" "$WORK/big.dl" || fail "big download differs"
+  rm -f "$WORK/big.bin" "$WORK/big.dl"
+  [ "$(dk inspect --format '{{.State.OOMKilled}} {{.RestartCount}}' "$CONTAINER")" = "false 0" ] || fail "container OOM-killed or restarted"
+  dk stats --no-stream --format 'memory after 1 GiB round-trip: {{.MemUsage}}' "$CONTAINER"
+fi
+
 step "notepad over Socket.IO + upload/download round-trip"
 node "$ROOT/scripts/capability.js" write "$BASE" "$MARKER" || fail "capability write"
 
-step "data is in the bind mount, owned by uid 1000"
+step "data is in the $([ "$MODE" = legacy ] && echo "bind mount" || echo "volume instantshit-data"), owned by uid ${USER_WANT%%:*}"
 sleep 3 # the notepad is persisted 2 s after the last edit
-listing="$(dk run --rm --user 0 -v "$WORK/data:/data" --entrypoint sh "$IMAGE" -c \
+src="$([ "$MODE" = legacy ] && echo "$WORK/data" || echo instantshit-data)"
+listing="$(dk run --rm --user 0 -v "$src:/data" --entrypoint sh "$IMAGE" -c \
   'cd /data && for f in currentFile meta.json currentText.json tmp; do stat -c "%n %u" "$f"; done; ls -A tmp | wc -l')"
 echo "$listing"
-[ "$(printf '%s\n' "$listing" | head -n4 | awk '{print $2}' | sort -u)" = 1000 ] || fail "data files not owned by 1000"
+[ "$(printf '%s\n' "$listing" | head -n4 | awk '{print $2}' | sort -u)" = "${USER_WANT%%:*}" ] || fail "data files not owned by ${USER_WANT%%:*}"
 [ "$(printf '%s\n' "$listing" | tail -n1)" = 0 ] || fail "upload temp files left in data/tmp"
 
 step "restart keeps text and file"
@@ -110,6 +168,11 @@ compose down >/dev/null 2>&1
 compose up -d >/dev/null 2>&1
 wait_up
 node "$ROOT/scripts/capability.js" verify "$BASE" "$MARKER" || fail "lost after down/up"
+
+if [ "$MODE" = template ]; then
+  code 200 "$BASE/healthz"
+  grep -q '"file":{"size":' "$WORK/body.out" || fail "healthz after restore: $(cat "$WORK/body.out")"
+fi
 
 step "nothing written outside /data"
 changes="$(dk diff "$CONTAINER" | grep -vE ' /data(/|$)' || true)"

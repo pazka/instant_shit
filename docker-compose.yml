@@ -1,20 +1,15 @@
-version: '3.7'
-
+# LEGACY compose (reference copy of the box's /root/hosh-deploy/instantshit/docker-compose.yml, pre-hosh-deploy).
+# Every image keeps working with it unchanged (CI: scripts/smoke-compose.sh legacy). After the cutover the box
+# runs docker-compose.example.yml through hosh-deploy instead (DEPLOY.md §6).
+# The second instance (instant_shit_mom, maman.hosh.it) was dropped by the owner on 2026-08-02.
 services:
   instant_shit:
     container_name: instantshit
-    image: pazka/instantshit:latest
-    ports:
-      - 12121:80
+    image: ghcr.io/pazka/instantshit:v0.1.1
+    ports: ["127.0.0.1:12121:80"]
+    user: "1000:1000"
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    sysctls: [net.ipv4.ip_unprivileged_port_start=0]
     restart: unless-stopped
-    volumes:
-      - ./data:/data
-
-  instant_shit_mom:
-    container_name: instantshitMom
-    image: pazka/instantshit:latest
-    ports:
-      - 12122:80
-    restart: unless-stopped
-    volumes:
-      - ./data-mom:/data
+    volumes: [./data:/data]       # currentFile, meta.json, currentText.json, tmp/
