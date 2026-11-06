@@ -75,6 +75,8 @@ jobs:
           context: .
           load: true
           tags: ghcr.io/pazka/instantshit:candidate
+      - name: Node runtime guardrail (CVE-2026-111497, hosh-management#5) - before any push
+        run: bash scripts/check-node-version.sh ghcr.io/pazka/instantshit:candidate
       - name: Trivy scan (CRITICAL; blocking unless TRIVY_POLICY=warn)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
