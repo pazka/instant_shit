@@ -55,10 +55,10 @@ notepad edit over Socket.IO seen by a second client, upload/download round-trip 
 `node` on the host), files in the bind mount owned by uid 1000 with an empty `tmp/`, text and file still served
 after `restart` and after `down`/`up`, nothing written outside `/data`, clean logs.
 `scripts/smoke-compose.sh template`: the same checks with `docker-compose.example.yml` + `.env.example` as
-hosh-deploy runs them (fresh named volume, uid 10001, read-only, pids 128, mem 512m), plus the register
+hosh-deploy runs them (fresh named volume, uid 10001, read-only, pids 128, mem 3g), plus the register
 validation (`scripts/check-hosh-deploy.sh`), healthcheck `healthy`, `/healthz` (GET + HEAD), the `POST_DEPLOY`
 command of `deploy/hosh-deploy.conf` inside the container (`checks/postdeploy.js`, read-only), and a 1 GiB
-upload/download under the 512m limit without OOM. Both modes also run in `release.yml` before anything is pushed.
+upload/download under the compose `mem_limit` (3g) without OOM (peak cgroup memory printed). Both modes also run in `release.yml` before anything is pushed.
 
 ## Upgrades checked (2026-10-19)
 

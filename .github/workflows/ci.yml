@@ -53,6 +53,6 @@ jobs:
       - name: Legacy compose mode (box today)
         run: bash scripts/smoke-compose.sh legacy instantshit:smoke
       # hosh-deploy: docker-compose.example.yml + .env.example (uid 10001, read-only, PORT=8000, named volume),
-      # register validation, POST_DEPLOY, 1 GiB upload under mem_limit 512m
+      # register validation, POST_DEPLOY, 1 GiB upload under the compose mem_limit
       - name: hosh-deploy compose mode (template)
         run: bash scripts/smoke-compose.sh template instantshit:smoke

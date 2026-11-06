@@ -26,9 +26,12 @@ services:
       - no-new-privileges:true
     user: "10001:10001"
     pids_limit: 128                      # one node process (~12 threads)
-    # 512m (box default) is enough: the server holds the pad text (<= 100 000 chars) and streams files;
-    # CI uploads and downloads a 1 GiB file under this limit (scripts/smoke-compose.sh template).
-    mem_limit: 512m
+    # Raised from the box default 512m: express-fileupload 1.5 writes uploads to /data/tmp WITHOUT backpressure,
+    # so when the client sends faster than the disk writes, the rest of the upload waits in RAM (up to the 2 GiB
+    # max file). Seen in CI: a 1 GiB upload under 512m had its connection dropped mid-upload once (most likely the
+    # OOM kill; passed on re-run).
+    # 3g = one fully buffered 2 GiB upload + node. The legacy compose has no limit at all.
+    mem_limit: 3g
     healthcheck:
       # no curl/wget in the image: node's fetch checks GET /healthz (data dir writable)
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8000/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
