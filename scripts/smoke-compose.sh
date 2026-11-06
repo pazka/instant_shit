@@ -8,9 +8,9 @@
 #
 #   bash scripts/smoke-compose.sh template IMAGE
 #     = docker-compose.example.yml + .env.example as hosh-deploy runs them (only APP_IMAGE differs): uid 10001,
-#       read-only rootfs, tmpfs /tmp, pids 128, mem 512m, PORT=8000 on 127.0.0.1:9136, fresh named volume
+#       read-only rootfs, tmpfs /tmp, pids 128, mem 3g, PORT=8000 on 127.0.0.1:9136, fresh named volume
 #       instantshit-data. Adds: the register validation, healthy healthcheck, /healthz, the POST_DEPLOY
-#       command of deploy/hosh-deploy.conf inside the container, a 1 GiB upload/download under the 512m limit.
+#       command of deploy/hosh-deploy.conf inside the container, a 1 GiB upload/download under the compose mem_limit.
 #
 # Checks: production config, Socket.IO notepad edit seen by a 2nd client, upload/download round-trip,
 # the data lands in the bind mount (currentFile, meta.json, currentText.json, tmp/), text + file are
@@ -77,7 +77,10 @@ compose() {
 }
 
 cleanup() {
-  if [ "${SMOKE_OK:-0}" != 1 ]; then echo "---- container log ----"; dk logs "$CONTAINER" 2>&1 | tail -n 40 || true; fi
+  if [ "${SMOKE_OK:-0}" != 1 ]; then
+    echo "---- container state: $(dk inspect --format 'OOMKilled={{.State.OOMKilled}} restarts={{.RestartCount}} status={{.State.Status}}' "$CONTAINER" 2>&1)"
+    echo "---- container log ----"; dk logs "$CONTAINER" 2>&1 | tail -n 40 || true
+  fi
   compose down -v --remove-orphans >/dev/null 2>&1 || true
   if [ -d "$WORK/data" ]; then  # files written by uid 1000: remove them from inside a container
     dk run --rm --user 0 -v "$WORK/data:/data" --entrypoint sh "$IMAGE" -c 'rm -rf /data/* /data/.[!.]*' >/dev/null 2>&1 || true
@@ -107,7 +110,7 @@ wait_up
 
 if [ "$MODE" = template ]; then
   step "hardening as configured, healthcheck healthy, /healthz"
-  [ "$(dk inspect --format '{{.HostConfig.ReadonlyRootfs}} {{.HostConfig.PidsLimit}} {{.HostConfig.Memory}}' "$CONTAINER")" = "true 128 536870912" ] \
+  [ "$(dk inspect --format '{{.HostConfig.ReadonlyRootfs}} {{.HostConfig.PidsLimit}} {{.HostConfig.Memory}}' "$CONTAINER")" = "true 128 3221225472" ] \
     || fail "hardening: $(dk inspect --format '{{.HostConfig.ReadonlyRootfs}} {{.HostConfig.PidsLimit}} {{.HostConfig.Memory}}' "$CONTAINER")"
   for _ in $(seq 1 40); do
     h="$(dk inspect --format '{{.State.Health.Status}}' "$CONTAINER")"; [ "$h" = healthy ] && break; sleep 2
@@ -135,7 +138,7 @@ if [ "$MODE" = template ]; then
   [ "${#post[@]}" -gt 0 ] || fail "POST_DEPLOY empty"
   dk exec "$CONTAINER" "${post[@]}" || fail "POST_DEPLOY"
 
-  step "1 GiB upload + download under mem_limit 512m (streams through /data/tmp, not RAM or the 16m /tmp)"
+  step "1 GiB upload + download under the compose mem_limit (to /data/tmp, not the 16m /tmp; no OOM)"
   head -c 1073741824 /dev/urandom > "$WORK/big.bin"
   code 200 -F "newFile=@$WORK/big.bin" "$BASE/newFile"
   grep -q '"size":1073741824' "$WORK/body.out" || fail "big upload: $(cat "$WORK/body.out")"
@@ -144,6 +147,8 @@ if [ "$MODE" = template ]; then
   rm -f "$WORK/big.bin" "$WORK/big.dl"
   [ "$(dk inspect --format '{{.State.OOMKilled}} {{.RestartCount}}' "$CONTAINER")" = "false 0" ] || fail "container OOM-killed or restarted"
   dk stats --no-stream --format 'memory after 1 GiB round-trip: {{.MemUsage}}' "$CONTAINER"
+  peak="$(dk exec "$CONTAINER" cat /sys/fs/cgroup/memory.peak 2>/dev/null || true)"
+  echo "cgroup memory peak during the round-trip: $([ -n "$peak" ] && echo "$((peak / 1048576)) MiB" || echo "n/a (no memory.peak)")"
 fi
 
 step "notepad over Socket.IO + upload/download round-trip"

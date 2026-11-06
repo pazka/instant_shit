@@ -49,7 +49,7 @@ Read-only (safe on the live pad; `POST_DEPLOY` = `node /checks/postdeploy.js htt
 
 Write round-trip (CI only, `scripts/smoke-compose.sh`; on the box only if the owner accepts replacing the pad):
 notepad edit seen by a second Socket.IO client, upload → `new_file` broadcast → download identical, both still
-served after `docker restart` and after `compose down`/`up`; a 1 GiB upload/download under `mem_limit 512m`.
+served after `docker restart` and after `compose down`/`up`; a 1 GiB upload/download under the compose `mem_limit`.
 
 ## 4. What runs
 
@@ -60,7 +60,7 @@ served after `docker restart` and after `compose down`/`up`; a 1 GiB upload/down
 | Edge | `/root/hosh-deploy/edge/traefik/dynamic/instantshit.yml` (router `instantshit@file`, resolver `le`, HSTS) |
 | Volume | docker volume `instantshit-data` → `/data` (in the monthly restic golden backup) |
 | Health | `GET /healthz` → `{"status":"ok", …}`; image `HEALTHCHECK` uses node's `fetch` (no curl) |
-| Hardening | uid 10001, read-only rootfs, tmpfs `/tmp` 16m (unused), cap_drop ALL, no-new-privileges, pids 128, mem 512m |
+| Hardening | uid 10001, read-only rootfs, tmpfs `/tmp` 16m (unused), cap_drop ALL, no-new-privileges, pids 128, mem 3g (see §5) |
 | Outbound | none (the server makes no outbound call; the page loads only its own assets) |
 
 ## 5. Decisions / known limits
@@ -69,11 +69,14 @@ served after `docker restart` and after `compose down`/`up`; a 1 GiB upload/down
   (an empty named volume takes the image's owner/mode on every mount, so any non-root uid can start on a fresh
   volume). The legacy compose (uid 1000, `./data:/data` bind mount, `127.0.0.1:12121:80`) keeps working
   unchanged; CI proves both modes on every PR and before every release push (`scripts/smoke-compose.sh legacy|template`).
-- **Uploads up to 2 GiB stream to disk**: express-fileupload writes to `/data/tmp` (same volume), then the file is
-  *renamed* to `/data/currentFile` (no copy). Nothing goes through RAM or the 16m `/tmp` tmpfs. CI measured ~35 MiB
-  RSS after a 1 GiB round-trip, hence **`mem_limit 512m`** (box default, generous headroom for many sockets and
-  concurrent downloads) and **`pids_limit 128`** (one node process, ~12 threads). The volume needs free space
-  for 2 × the largest upload while one replaces the other.
+- **Uploads up to 2 GiB go to disk, not the tmpfs**: express-fileupload writes to `/data/tmp` (same volume), then
+  the file is *renamed* to `/data/currentFile` (no copy); the 16m `/tmp` tmpfs is never used. But express-fileupload
+  1.5 writes **without backpressure**: when the client sends faster than the disk writes, the unwritten part of the
+  upload waits in RAM. Usually ~35 MiB after, but under 512m a 1 GiB CI upload once lost its connection mid-upload (most likely OOM;
+  the container state was not captured then, the smoke now reports it; passed on re-run). Hence **`mem_limit 3g`** (raised from the box default 512m: one fully buffered 2 GiB upload +
+  node; the legacy compose has no limit at all; the box has 15 GiB) and **`pids_limit 128`** (one node process,
+  ~12 threads). Several simultaneous multi-GiB uploads from fast clients could still exceed it (OOM kill → restart,
+  the upload fails, stored data is safe). The volume needs free space for 2 × the largest upload.
 - `X-Forwarded-For`: `trust proxy 1` (one hop, as before) — behind Traefik → docker-proxy that hop is the edge.
   Rate limits (15 uploads / 10 min, 30 downloads / min per IP) are deliberate.
 - No authentication by design: anyone with the URL can read and replace the text and the file.
