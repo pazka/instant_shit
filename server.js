@@ -18,7 +18,7 @@ const MAX_FILE_SIZE = config("MAX_FILE_SIZE")
 const MAX_TEXT_SIZE = config("MAX_TEXT_SIZE")
 const maxFileSizeMo = Math.round(MAX_FILE_SIZE / (1024 * 1024))
 
-let port = config('PORT', 80)
+let port = config('PORT', 80) || 80 // production config: env PORT (image default 80, hosh-deploy 8000)
 let name = config('NAME', "Instant Shit")
 let dataDirectory = process.env.DATA_DIR || 'data'
 const currentFilePath = path.join(dataDirectory, 'currentFile')
@@ -138,7 +138,7 @@ const downloadLimiter = rateLimit({
 app.use(cors(config('CORS')));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({extended: true}));
-app.use(morgan('combined'));
+app.use(morgan('combined', {skip: req => req.path === '/healthz'})); // docker probes it every 30 s
 
 app.use('/', express.static(path.join(__dirname, "www")));
 
@@ -192,6 +192,34 @@ io.sockets.on('connection', function (socket) {
 });
 
 // ---- routes ------------------------------------------------------------------
+// GET/HEAD /healthz (hosh.it box standard): proves the data dir is writable and the state readable.
+// Never returns the paste or the file name.
+let healthProbe = 0
+app.get('/healthz', async (req, res) => {
+    const probe = path.join(dataDirectory, `.healthz-${process.pid}-${healthProbe++}`)
+    try {
+        const token = String(Date.now())
+        await fs.promises.writeFile(probe, token)
+        const back = await fs.promises.readFile(probe, 'utf8')
+        await fs.promises.unlink(probe)
+        if (back !== token) throw new Error('read back mismatch')
+        await fs.promises.access(tmpDirectory, fs.constants.W_OK)
+        const hasFile = Boolean(currentFileMeta.name) && fs.existsSync(currentFilePath)
+        res.set('Cache-Control', 'no-store').send({
+            status: 'ok',
+            dataWritable: true,
+            file: hasFile ? {size: currentFileMeta.size, time: currentFileMeta.time} : null,
+            text: {time: lastTextUpdate, saved: fs.existsSync(textFilePath)},
+            clients: io.engine.clientsCount,
+            uptime: Math.round(process.uptime())
+        })
+    } catch (err) {
+        fs.promises.unlink(probe).catch(() => {})
+        console.error('healthz failed', err.code || err.message)
+        res.status(503).set('Cache-Control', 'no-store').send({status: 'error', dataWritable: false, error: err.code || 'probe failed'})
+    }
+})
+
 app.get('/title', (req, res) => {
     res.send(name)
 })

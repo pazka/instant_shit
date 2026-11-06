@@ -1,0 +1,47 @@
+# instantshit (pad.hosh.it) on the hosh.it box (no secrets here). On the box it becomes
+# /srv/instantshit/docker-compose.yml, validated and pinned by `hosh-deploy register` (any later change
+# needs a re-register). Every site-specific value comes from instantshit.env (interpolation AND container env).
+# Box standard (hosh-migration 11-BOX-STANDARD.md): published on a LOOPBACK port only; the edge Traefik
+# (host network, file provider) routes pad.hosh.it to it (route rendered by hosh-deploy from
+# deploy/traefik-route.yml.tmpl).
+# hosh-deploy refuses: root user, writable rootfs, missing cap_drop ALL / no-new-privileges /
+# healthcheck, privileged, host network/pid/ipc, devices, bind mounts, non-loopback ports.
+name: instantshit            # fixed compose project name (whatever the checkout dir)
+services:
+  instantshit:
+    image: ${APP_IMAGE:-ghcr.io/pazka/instantshit:latest}
+    container_name: instantshit
+    restart: unless-stopped
+    env_file: ./instantshit.env          # chmod 600 (PORT=8000, DATA_DIR=/data, TITLE)
+    volumes:
+      # ALL state: currentFile, meta.json, currentText.json and tmp/ (upload temp files, up to 2 GiB each).
+      # Uploads stream to /data/tmp then are renamed to /data/currentFile: never through RAM or /tmp.
+      - instantshit-data:/data
+    # --- hardening (box standard) ---
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777          # unused by the app (uploads go to /data/tmp)
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    user: "10001:10001"
+    pids_limit: 128                      # one node process (~12 threads)
+    # 512m (box default) is enough: the server holds the pad text (<= 100 000 chars) and streams files;
+    # CI uploads and downloads a 1 GiB file under this limit (scripts/smoke-compose.sh template).
+    mem_limit: 512m
+    healthcheck:
+      # no curl/wget in the image: node's fetch checks GET /healthz (data dir writable)
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8000/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+    ports:
+      - "${APP_BIND:-127.0.0.1:9136}:8000"   # loopback only, never 0.0.0.0
+
+volumes:
+  instantshit-data:
+    name: instantshit-data       # exact docker volume name

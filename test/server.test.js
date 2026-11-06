@@ -64,6 +64,17 @@ test('static page, title, limits, initial state, no file yet', async () => {
     assert.deepEqual([file.status, await file.json()], [404, {status: false, message: 'No file has been uploaded yet'}])
 })
 
+test('GET/HEAD /healthz: data dir writable, no paste content, no probe left behind', async () => {
+    const r = await fetch(BASE + '/healthz')
+    assert.equal(r.status, 200)
+    assert.equal(r.headers.get('cache-control'), 'no-store')
+    const h = await r.json()
+    assert.deepEqual(Object.keys(h), ['status', 'dataWritable', 'file', 'text', 'clients', 'uptime'])
+    assert.deepEqual([h.status, h.dataWritable, h.file, h.text.saved], ['ok', true, null, false])
+    assert.equal((await fetch(BASE + '/healthz', {method: 'HEAD'})).status, 200)
+    assert.deepEqual(fs.readdirSync(data).filter(f => f.startsWith('.healthz')), [])
+})
+
 test('upload: no file 400, file stored and downloadable, new_file broadcast, size limits', async () => {
     const watcher = await new PollClient(BASE).connect()
     try {
