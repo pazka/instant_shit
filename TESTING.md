@@ -73,7 +73,7 @@ upload/download under the compose `mem_limit` (3g) without OOM (peak cgroup memo
   express-rate-limit 8 keys an IPv4-mapped IPv6 address (`::ffff:a.b.c.d`) as `a.b.c.d`.
 
 - **Node 26.13.0** (2026-11-06, hosh-management#5, CVE-2026-111497 fixed in 26.12.1): base image pinned to
-  `node:26.13.0-alpine@sha256:…` (Dependabot `docker` bumps tag and digest), Node 20 dropped from the test
+  `node:26.13.1-alpine@sha256:…` (Dependabot `docker` bumps tag and digest), Node 20 dropped from the test
   matrix (EOL).
 
 ## Notes (not changed)

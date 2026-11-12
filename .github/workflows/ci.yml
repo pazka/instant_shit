@@ -47,7 +47,7 @@ jobs:
             echo "$out"; echo "::error::guardrail accepted node:24.21.0-alpine (unpatched)"; exit 1
           fi
           printf '%s\n' "$out" | sed 's/::error::/expected rejection: /' # no error annotation for the expected failure
-          grep -q 'runs Node 24.21.0 < 24.22.1' <<<"$out" || { echo "::error::guardrail failed for another reason"; exit 1; }
+          grep -q 'runs Node 24.21.0 < 24.22.3' <<<"$out" || { echo "::error::guardrail failed for another reason"; exit 1; }
       - run: bash scripts/smoke.sh instantshit:smoke
       # migration safety net: the box's legacy compose (uid 1000, :80, bind mount ./data) keeps working
       - name: Legacy compose mode (box today)
