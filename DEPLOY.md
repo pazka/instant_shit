@@ -13,6 +13,8 @@ healthy, checks `/healthz` on the loopback port and through Traefik, runs `POST_
 (`deploy/hosh-deploy.conf`, read-only checks) and **rolls back by itself** if any check fails (the workflow
 then goes red). Nothing from the repo runs on the host.
 
+- Release: push the tag `vX.Y.Z`, or Actions → **release** on `master` with `version=vX.Y.Z` (creates the
+  tag and the GitHub release on the commit it built and scanned; fails if the tag exists on another commit).
 - No `HOSH_DEPLOY_KEY` secret (before the cutover): the deploy job prints a notice and does nothing, so a
   release only pushes `:vX.Y.Z`, `:<sha>` and `:latest` exactly as before. Prerelease tags (`v1.2.3-rc.1`)
   and branch builds are never deployed and never move `:latest`.
