@@ -60,6 +60,45 @@ validation (`scripts/check-hosh-deploy.sh`), healthcheck `healthy`, `/healthz` (
 command of `deploy/hosh-deploy.conf` inside the container (`checks/postdeploy.js`, read-only), and a 1 GiB
 upload/download under the compose `mem_limit` (3g) without OOM (peak cgroup memory printed). Both modes also run in `release.yml` before anything is pushed.
 
+## Visual use cases (visual regression, hosh-management AGENTS.md §3)
+
+`visual/run.sh IMAGE` (CI `container smoke`, last step): the built image runs hardened as hosh-deploy runs it
+(uid 10001, read-only, cap_drop ALL, no-new-privileges, `PORT=8000`, a fresh empty `/data` volume, the image's
+production config: `QuickPaste`, 2 GiB / 100 000 limits) on `http://localhost:9875`. Two headless Chromes of the
+runner (mouse for 1400 / 1024, touch for 390) resolve every other host name to nothing, and `visual/shoot.mjs`
+runs with the image's own node (no package): every case below at **1400, 1024 and 390 px**, a new visitor (new
+browser context) for each shot, compared with `visual/baseline/<id>-<width>.png` (tolerance: channel 24, 0.1 %
+of the pixels). Copied from pazka/MyMurderParty `visual/` (itself from pazka/plats). A failing shot is printed
+in the CI log; `node visual/from-log.mjs <log> [dir]` writes it back as a PNG. Locally (no Docker):
+`node server.js` with `config.prod.json`, `TITLE=QuickPaste`, `PORT=9875`, an empty `DATA_DIR`, then
+`CHROME=/path/to/chrome node visual/shoot.mjs http://localhost:9875`.
+
+The server holds ONE shared paste and ONE file, so the cases run in this order on one container, and a step
+only changes the shared state when it is not there yet (every width of a case sees the same state):
+
+| id | page / state | steps |
+|---|---|---|
+| E1-empty | fresh server: empty pad, "No file has been shared yet.", max 2.00 Go | none |
+| E2-drag-over | a file dragged over the drop zone (highlighted), nothing shared yet | dragenter + dragover on `#drop-zone` |
+| T1-text | the pad as a new visitor sees it after someone typed a 5-line list | type in the editor, wait for the server, reload |
+| T2-text-too-big | the sender typed past 100 000 characters: red "Text is too big !" error, pad scrolled to the top | + type 16 700 x "paste " at the end |
+| F1-file-shared | text + a shared file: download button `holiday-photos.zip`, 120.6 Ko | + drop a 123 456-byte file on the drop zone (`DataTransfer`, the page's real upload), reload |
+| F2-file-drag-over | a file dragged over the drop zone while a file is shared | + dragenter + dragover |
+
+Pinned so a diff means a real change: the "Last update" dates (`#txtMaj`, `#fileMaj`, they come from the clock)
+show `01/01/2026 12:00:00`; animations, transitions and the caret are off; the window is scrolled to the top.
+
+Not covered, and why:
+- The upload progress bar (`#upload-status`): it lasts as long as the upload, too short to shoot reliably.
+- Upload errors (429 after 15 uploads in 10 min, 413 over 2 GiB, "an upload is already running"), the "Slow down !"
+  edit throttle and the live sync between two windows: covered by `test/server.test.js` and the compose smokes,
+  not by pictures.
+- Hover states (the download button turns red): not shot.
+
+Seen while building the harness, not changed (owner decision if wanted): on a phone (portrait) a single
+unbroken word of 100 000 letters makes the text panel 650 000 px wide (`.ql-editor` does not break it in the
+column layout); and the full-page phone shots end the gradient at 900 px (`background-attachment: fixed`).
+
 ## Upgrades checked (2026-10-19)
 
 - **Node 20 → 26** (Dependabot #3): tests 5/5 on 26.12, hardened smoke OK on `node:26-alpine` → **applied** (Dockerfile on `node:26-alpine`).

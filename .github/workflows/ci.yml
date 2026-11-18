@@ -56,3 +56,8 @@ jobs:
       # register validation, POST_DEPLOY, 1 GiB upload under the compose mem_limit
       - name: hosh-deploy compose mode (template)
         run: bash scripts/smoke-compose.sh template instantshit:smoke
+      # visual regression (hosh-management AGENTS.md §3): the runner's Chrome over the DevTools protocol, the
+      # image's own node, no package; every case at 1400 / 1024 / 390 vs visual/baseline/ (TESTING.md).
+      # A failing shot is printed in this log (VISUAL-PNG lines): visual/from-log.mjs writes it back as a file.
+      - name: visual regression (screenshots vs baselines, nothing leaves the runner)
+        run: VISUAL_PRINT_NEW=1 bash visual/run.sh instantshit:smoke
