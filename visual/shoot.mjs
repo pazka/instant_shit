@@ -175,4 +175,7 @@ phone.close();
 writeFileSync(join(OUT, "report.json"), JSON.stringify(report, null, 2));
 console.log(`\n${report.shots.length} shots, ${report.failures.length} failure(s)`);
 for (const f of report.failures) console.log(`  - ${f.name}: ${f.reason}`);
-process.exit(report.failures.length ? 1 : 0);
+// exit only once stdout is flushed: piped (docker run, CI) it is asynchronous and process.exit() would cut the
+// last VISUAL-PNG lines
+process.exitCode = report.failures.length ? 1 : 0;
+process.stdout.write("", () => process.exit());
