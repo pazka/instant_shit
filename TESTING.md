@@ -9,7 +9,7 @@ Actions): it pins what the shared paste page does today so a Dependabot PR is ju
 # server tests: black-box, spawns `node server.js` (DEV config.json, DATA_DIR in a temp dir)
 docker run --rm -v "$PWD":/src:ro node:26-alpine sh -c \
   'mkdir /a && cd /src && tar --exclude=./node_modules --exclude=./data -cf - . | tar -xf - -C /a && cd /a \
-   && npm ci --ignore-scripts && node --test --test-reporter=spec test/server.test.js'
+   && npm ci --ignore-scripts && node --test --test-reporter=spec test/server.test.js test/log.test.js'
 
 # container smoke (hardened: uid 1000, read-only rootfs, /data volume, restart)
 docker build -t instantshit:smoke . && bash scripts/smoke.sh instantshit:smoke
@@ -46,6 +46,16 @@ download with the original name / `new_file` broadcast / both 413 paths; notepad
 dotfile / traversal fallbacks, CORS preflight; `/file` `Content-Disposition` byte-for-byte (quoted name, latin1
 `?` fallback + `filename*`), HEAD and ranges; draft-6 `RateLimit-*` headers, one bucket per client IP via
 `X-Forwarded-For` (IPv6 addresses not grouped by subnet).
+
+`test/log.test.js` (11 tests): the logging standard (hosh-management AGENTS.md §11), see `DEPLOY.md` §5 "Logs".
+`log.js` unit tests (line format, level filter, `LOG_LEVEL` / `APP_LOG_LEVEL`, `errField`, `requestId`, route
+templates); the request logger on a real Express app (5xx = one `request_failed` error line with `err`, slow =
+`request_slow` warn, the rest and `/healthz` at debug, `X-Request-Id` kept or generated); `server.js` black box:
+the `startup` line (version, port, `data_dir_writable` true, and false on a read-only data dir run as a non-root
+uid, config names without values), `file_uploaded`, `shutdown` on SIGTERM writes a pending notepad edit first
+(exit 0), `upload_failed` + `request_failed` on a failing upload (answer unchanged), `restore_failed` on unreadable
+saved state, debug lines; stdout is only JSON, stderr stays empty (Express env "test"), and no paste, file name,
+path, query string, socket id or IP is ever logged.
 
 `scripts/smoke.sh`: the built image with the production config (`QuickPaste`, 2 GiB / 100 000 limits),
 hardened, upload/download, engine.io handshake, file kept across `docker restart`.

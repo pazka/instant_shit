@@ -1,13 +1,17 @@
+const {log, requestLogger, errorRecorder, errField, configNamesSet} = require('./log.js')
 const config = require('./config.js')('./config.json')
 const express = require("express")
 const app = express();
+// Express's final handler prints every error (a bad JSON body, a 416...) on stderr unless env is "test";
+// errorRecorder puts it in the JSON request line instead. Answers are unchanged: finalhandler only treats
+// "production" differently, and the image never sets NODE_ENV.
+if (app.get('env') !== 'production') app.set('env', 'test')
 const path = require("path")
 const server = require('http').createServer(app);
 const fileUpload = require('express-fileupload');
 const rateLimit = require('express-rate-limit');
 const cors = require('cors');
 const bodyParser = require('body-parser');
-const morgan = require('morgan');
 var fs = require('fs');
 
 // maxHttpBufferSize caps a single socket message, so a huge payload
@@ -59,7 +63,7 @@ try {
         currentFileMeta = {name: "restored-file", size: stat.size, mimetype: "application/octet-stream", time: stat.mtimeMs}
     }
 } catch (err) {
-    console.error("Could not restore file metadata", err)
+    log.error('restore_failed', 'Could not restore file metadata', {what: 'file_meta', ...errField(err)})
 }
 
 try {
@@ -69,12 +73,12 @@ try {
         lastTextUpdate = saved.time
     }
 } catch (err) {
-    console.error("Could not restore notepad content", err)
+    log.error('restore_failed', 'Could not restore notepad content', {what: 'text', ...errField(err)})
 }
 
 function persistMeta() {
     fs.writeFile(metaFilePath, JSON.stringify(currentFileMeta), err => {
-        if (err) console.error("Could not persist file metadata", err)
+        if (err) log.error('persist_failed', 'Could not persist file metadata', {what: 'file_meta', ...errField(err)})
     })
 }
 
@@ -84,13 +88,26 @@ function persistTextSoon() {
     textSaveTimer = setTimeout(() => {
         textSaveTimer = null
         fs.writeFile(textFilePath, JSON.stringify({content: currentQuillObj, time: lastTextUpdate}), err => {
-            if (err) console.error("Could not persist notepad content", err)
+            if (err) log.error('persist_failed', 'Could not persist notepad content', {what: 'text', ...errField(err)})
         })
     }, 2000)
 }
 
+// on shutdown: write the notepad now if a save is still waiting for its timer
+function persistTextNow() {
+    if (!textSaveTimer) return
+    clearTimeout(textSaveTimer)
+    textSaveTimer = null
+    try {
+        fs.writeFileSync(textFilePath, JSON.stringify({content: currentQuillObj, time: lastTextUpdate}))
+    } catch (err) {
+        log.error('persist_failed', 'Could not persist notepad content', {what: 'text', ...errField(err)})
+    }
+}
+
 // ---- middlewares -------------------------------------------------------------
 app.set('trust proxy', 1) // behind traefik: rate-limit on the real client IP
+app.use(requestLogger()) // X-Request-Id + one JSON line for a 5xx or a slow answer (never the path or the IP)
 
 // reject oversize uploads before reading the body at all
 app.use('/newFile', (req, res, next) => {
@@ -138,7 +155,6 @@ const downloadLimiter = rateLimit({
 app.use(cors(config('CORS')));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({extended: true}));
-app.use(morgan('combined', {skip: req => req.path === '/healthz'})); // docker probes it every 30 s
 
 app.use('/', express.static(path.join(__dirname, "www")));
 
@@ -149,7 +165,7 @@ const TXT_BUCKET_REFILL_PER_S = 15
 let roomNeedsResync = false
 
 io.sockets.on('connection', function (socket) {
-    console.log('Client connected');
+    log.debug('socket_connect', 'client connected', {clients: io.engine.clientsCount});
 
     let tokens = TXT_BUCKET_CAPACITY
     let lastRefill = Date.now()
@@ -186,8 +202,8 @@ io.sockets.on('connection', function (socket) {
         io.to("global_room").emit('new_text', {from: socket.id, time: lastTextUpdate, val: data, resync})
     });
 
-    socket.on('disconnect', () => {
-        console.log(`${socket.conn.remoteAddress} disconnected`);
+    socket.on('disconnect', reason => {
+        log.debug('socket_disconnect', 'client disconnected', {reason, clients: io.engine.clientsCount});
     });
 });
 
@@ -215,7 +231,7 @@ app.get('/healthz', async (req, res) => {
         })
     } catch (err) {
         fs.promises.unlink(probe).catch(() => {})
-        console.error('healthz failed', err.code || err.message)
+        log.error('healthz_failed', 'healthz failed', {code: err.code || 'probe failed'})
         res.status(503).set('Cache-Control', 'no-store').send({status: 'error', dataWritable: false, error: err.code || 'probe failed'})
     }
 })
@@ -280,7 +296,6 @@ app.post('/newFile', async (req, res) => {
 
         let newFile = req.files.newFile;
         if (Array.isArray(newFile)) newFile = newFile[0]
-        console.log("New file size : ", newFile.size, " octets")
         if (newFile.size > MAX_FILE_SIZE) {
             return res.status(413).send({
                 status: false,
@@ -297,6 +312,7 @@ app.post('/newFile', async (req, res) => {
             time: Date.now()
         }
         persistMeta()
+        log.info('file_uploaded', 'new file', {size: currentFileMeta.size})
         io.to("global_room").emit('new_file', {time: currentFileMeta.time, val: currentFileMeta.name, size: currentFileMeta.size})
 
         res.send({
@@ -309,11 +325,33 @@ app.post('/newFile', async (req, res) => {
             }
         });
     } catch (err) {
-        console.error(err)
+        // the error names DATA_DIR paths only (the upload's own name is never in an fs error)
+        log.error('upload_failed', 'Upload failed', errField(err))
         res.status(500).send({status: false, message: "Upload failed on the server, try again"});
     }
 });
 
+// Express default error answers stay as they were; the error goes to the request line
+app.use(errorRecorder)
+
+function writable(dir) {
+    try { fs.accessSync(dir, fs.constants.W_OK); return true } catch (e) { return false }
+}
+
 server.listen(port, () => {
-    console.log('Listening on http://localhost:' + port)
+    log.info('startup', 'Listening on http://localhost:' + port, {
+        port: Number(port),
+        data_dir_writable: writable(dataDirectory) && writable(tmpDirectory),
+        log_level: log.level,
+        config: configNamesSet(),
+    })
 });
+
+// docker stop sends SIGTERM to node (PID 1 in the image): save a pending notepad edit, one line, exit
+for (const signal of ['SIGTERM', 'SIGINT']) {
+    process.once(signal, () => {
+        persistTextNow()
+        log.info('shutdown', 'stopping', {signal, uptime_s: Math.round(process.uptime())})
+        process.exit(0)
+    })
+}
