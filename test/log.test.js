@@ -335,3 +335,142 @@ test('server: the startup line says data_dir_writable:false on a read-only data 
         await s.stop()
     }
 })
+
+// root writes everywhere: the server then runs as nobody (65534), as the image runs as a non-root uid
+const asRoot = typeof process.getuid === 'function' && process.getuid() === 0
+const nobody = asRoot ? {uid: 65534, gid: 65534} : {}
+const giveToNobody = data => { if (asRoot) fs.chownSync(data, 65534, 65534) }
+const hiddenEverywhere = (s, extra = []) => {
+    for (const x of [s.data, 'meta.json', 'currentText.json', 'currentFile', ...extra]) assert.ok(!s.out.includes(x), x)
+}
+
+test('server: SIGTERM during a save (slow disk) loses nothing: notepad and file metadata are written whole', async () => {
+    const preload = path.join(__dirname, 'slow-write-preload.js')
+    const s = startServer(12146, {NODE_OPTIONS: `--require ${preload}`})
+    let again
+    try {
+        await s.ready
+        const c = new PollClient(s.base)
+        await c.connect()
+        await c.emit('txt_update', {content: {ops: [{insert: 'kept paste\n'}]}})
+        await c.close()
+        await sleep(2100) // the 2 s timer fired: the notepad save is being written (800 ms)
+        assert.equal((await upload(s.base, 'kept-file.txt', 'hello')).status, 200) // the meta.json save starts
+        await sleep(200)
+        s.proc.kill('SIGTERM')
+        assert.deepEqual(await s.exited, {code: 0, signal: null})
+        assert.deepEqual(JSON.parse(fs.readFileSync(path.join(s.data, 'currentText.json'))).content, {ops: [{insert: 'kept paste\n'}]})
+        assert.equal(JSON.parse(fs.readFileSync(path.join(s.data, 'meta.json'))).name, 'kept-file.txt')
+        assert.ok(!s.lines().some(o => o.level === 'error'), s.out)
+
+        // the restart restores both and clears what the cut-short saves left behind
+        again = startServer(12147, {}, data => fs.cpSync(s.data, data, {recursive: true}))
+        await again.ready
+        const all = await (await fetch(again.base + '/all')).json()
+        assert.deepEqual([all.txt.val, all.file.val, all.file.size], [{ops: [{insert: 'kept paste\n'}]}, 'kept-file.txt', 5])
+        assert.ok(!again.lines().some(o => o.event === 'restore_failed'), again.out)
+        assert.deepEqual(fs.readdirSync(again.data).filter(f => f.endsWith('.part')), [])
+    } finally {
+        await s.stop()
+        if (again) await again.stop()
+    }
+})
+
+test('server: a save that fails gives persist_failed (text and file_meta) with err, never a path, file name or paste', async () => {
+    const s = startServer(12148)
+    try {
+        await s.ready
+        // the targets become non-empty directories: renaming a save over them fails
+        for (const f of ['meta.json', 'currentText.json']) fs.mkdirSync(path.join(s.data, f, 'block'), {recursive: true})
+        assert.equal((await upload(s.base, 'secret-upload.txt', 'abc')).status, 200)
+        const c = new PollClient(s.base)
+        await c.connect()
+        await c.emit('txt_update', {content: {ops: [{insert: 'secret paste text\n'}]}})
+        await c.close()
+        await sleep(2600)
+        const pf = s.lines().filter(o => o.event === 'persist_failed')
+        assert.deepEqual(pf.map(o => [o.level, o.what, o.msg]).sort(), [
+            ['error', 'file_meta', 'Could not persist file metadata'],
+            ['error', 'text', 'Could not persist notepad content'],
+        ])
+        for (const o of pf) {
+            assert.match(o.ts, TS)
+            assert.deepEqual([o.err.type, o.err.code], ['Error', 'EISDIR'])
+            assert.match(o.err.message, /^EISDIR: illegal operation on a directory, rename '<hidden>\.\d+-\d+\.part' -> '<hidden>'$/)
+            assert.equal(o.err.stack.split('\n')[0], 'Error: ' + o.err.message)
+        }
+        hiddenEverywhere(s, ['secret-upload', 'secret paste'])
+        assert.equal(s.err, '')
+    } finally {
+        await s.stop()
+    }
+})
+
+test('server: a save that fails on shutdown gives persist_failed (text) with err, then the shutdown line, exit 0', async () => {
+    const s = startServer(12149)
+    try {
+        await s.ready
+        fs.mkdirSync(path.join(s.data, 'currentText.json', 'block'), {recursive: true})
+        const c = new PollClient(s.base)
+        await c.connect()
+        await c.emit('txt_update', {content: {ops: [{insert: 'secret paste text\n'}]}})
+        await c.close()
+        await sleep(200)
+        s.proc.kill('SIGTERM')
+        assert.deepEqual(await s.exited, {code: 0, signal: null})
+        const lines = s.lines()
+        assert.deepEqual(lines.map(o => o.event), ['startup', 'persist_failed', 'shutdown'])
+        const pf = lines[1]
+        assert.deepEqual([pf.level, pf.what, pf.err.type, pf.err.code], ['error', 'text', 'Error', 'EISDIR'])
+        assert.match(pf.err.stack, /^Error: EISDIR: .*\n\s+at /)
+        hiddenEverywhere(s, ['secret paste'])
+    } finally {
+        await s.stop()
+    }
+})
+
+test('server: /healthz on an unwritable data dir answers 503 and logs healthz_failed with its code, no path', async () => {
+    const s = startServer(12150, {}, giveToNobody, nobody)
+    try {
+        await s.ready
+        assert.equal((await fetch(s.base + '/healthz')).status, 200)
+        fs.chmodSync(s.data, 0o555)
+        const r = await fetch(s.base + '/healthz')
+        assert.equal(r.status, 503)
+        assert.deepEqual(await r.json(), {status: 'error', dataWritable: false, error: 'EACCES'})
+        await sleep(100)
+        const hf = s.lines().filter(o => o.event === 'healthz_failed')
+        assert.equal(hf.length, 1, s.out)
+        assert.match(hf[0].ts, TS)
+        assert.deepEqual([hf[0].level, hf[0].msg, hf[0].code], ['error', 'healthz failed', 'EACCES'])
+        hiddenEverywhere(s)
+    } finally {
+        await s.stop()
+    }
+})
+
+test('server: an error Express answers itself (unreadable file download, 500) is one request_failed line with err', async () => {
+    const s = startServer(12151, {}, data => {
+        fs.writeFileSync(path.join(data, 'meta.json'), JSON.stringify({name: 'secret-dl-name.txt', size: 3, mimetype: 'text/plain', time: 1}))
+        fs.writeFileSync(path.join(data, 'currentFile'), 'abc')
+        fs.chmodSync(path.join(data, 'currentFile'), 0o000)
+        giveToNobody(data)
+    }, nobody)
+    try {
+        await s.ready
+        const r = await fetch(s.base + '/file', {headers: {'x-request-id': 'req-dl-1'}})
+        assert.equal(r.status, 500)
+        await sleep(100)
+        const rf = s.lines().filter(o => o.event === 'request_failed')
+        assert.equal(rf.length, 1, s.out)
+        assert.deepEqual([rf[0].level, rf[0].req_id, rf[0].method, rf[0].route, rf[0].status],
+            ['error', 'req-dl-1', 'GET', '/file', 500])
+        assert.deepEqual([rf[0].err.type, rf[0].err.code, rf[0].err.message],
+            ['Error', 'EACCES', "EACCES: permission denied, open '<hidden>'"])
+        assert.equal(rf[0].err.stack.split('\n')[0], 'Error: ' + rf[0].err.message)
+        hiddenEverywhere(s, ['secret-dl-name'])
+        assert.equal(s.err, '')
+    } finally {
+        await s.stop()
+    }
+})

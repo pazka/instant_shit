@@ -76,10 +76,51 @@ try {
     log.error('restore_failed', 'Could not restore notepad content', {what: 'text', ...errField(err)})
 }
 
-function persistMeta() {
-    fs.writeFile(metaFilePath, JSON.stringify(currentFileMeta), err => {
-        if (err) log.error('persist_failed', 'Could not persist file metadata', {what: 'file_meta', ...errField(err)})
+// Paths never reach the log: an fs error names DATA_DIR files, and the data dir's path is the operator's.
+const hiddenPaths = [path.resolve(dataDirectory), currentFilePath, metaFilePath, textFilePath, path.resolve(currentFilePath)]
+const fsErr = err => errField(err, hiddenPaths)
+
+// A save writes a temporary file next to the target, then renames it over the target: a stop at any moment
+// leaves either the previous save or the new one, never an emptied file.
+let saveSeq = 0
+const partName = file => `${file}.${process.pid}-${saveSeq++}.part`
+const writing = {text: 0, file_meta: 0} // async saves in progress, finished on shutdown
+function saveAtomic(what, file, data) {
+    const part = partName(file)
+    writing[what]++
+    fs.writeFile(part, data, err => {
+        const done = e => {
+            writing[what]--
+            if (e) {
+                fs.unlink(part, () => {})
+                log.error('persist_failed', what === 'text' ? 'Could not persist notepad content' : 'Could not persist file metadata',
+                    {what, ...fsErr(e)})
+            }
+        }
+        if (err) return done(err)
+        fs.rename(part, file, done)
     })
+}
+function saveAtomicSync(what, file, data) {
+    const part = partName(file)
+    try {
+        fs.writeFileSync(part, data)
+        fs.renameSync(part, file)
+    } catch (err) {
+        try { fs.unlinkSync(part) } catch (e) { /* not created */ }
+        log.error('persist_failed', what === 'text' ? 'Could not persist notepad content' : 'Could not persist file metadata',
+            {what, ...fsErr(err)})
+    }
+}
+// leftovers of a save cut short by a crash
+for (const f of fs.readdirSync(dataDirectory)) {
+    if (/^(meta|currentText)\.json\.\d+-\d+\.part$/.test(f)) try { fs.unlinkSync(path.join(dataDirectory, f)) } catch (e) { /* ignore */ }
+}
+
+const textJson = () => JSON.stringify({content: currentQuillObj, time: lastTextUpdate})
+
+function persistMeta() {
+    saveAtomic('file_meta', metaFilePath, JSON.stringify(currentFileMeta))
 }
 
 let textSaveTimer = null
@@ -87,27 +128,22 @@ function persistTextSoon() {
     if (textSaveTimer) return
     textSaveTimer = setTimeout(() => {
         textSaveTimer = null
-        fs.writeFile(textFilePath, JSON.stringify({content: currentQuillObj, time: lastTextUpdate}), err => {
-            if (err) log.error('persist_failed', 'Could not persist notepad content', {what: 'text', ...errField(err)})
-        })
+        saveAtomic('text', textFilePath, textJson())
     }, 2000)
 }
 
-// on shutdown: write the notepad now if a save is still waiting for its timer
-function persistTextNow() {
-    if (!textSaveTimer) return
-    clearTimeout(textSaveTimer)
+// on shutdown: write now what is waiting for its timer or still being written, synchronously
+function persistNow() {
+    const textDue = textSaveTimer !== null || writing.text > 0
+    if (textSaveTimer) clearTimeout(textSaveTimer)
     textSaveTimer = null
-    try {
-        fs.writeFileSync(textFilePath, JSON.stringify({content: currentQuillObj, time: lastTextUpdate}))
-    } catch (err) {
-        log.error('persist_failed', 'Could not persist notepad content', {what: 'text', ...errField(err)})
-    }
+    if (textDue) saveAtomicSync('text', textFilePath, textJson())
+    if (writing.file_meta > 0) saveAtomicSync('file_meta', metaFilePath, JSON.stringify(currentFileMeta))
 }
 
 // ---- middlewares -------------------------------------------------------------
 app.set('trust proxy', 1) // behind traefik: rate-limit on the real client IP
-app.use(requestLogger()) // X-Request-Id + one JSON line for a 5xx or a slow answer (never the path or the IP)
+app.use(requestLogger(log, undefined, hiddenPaths)) // X-Request-Id + one JSON line for a 5xx or a slow answer (never the path or the IP)
 
 // reject oversize uploads before reading the body at all
 app.use('/newFile', (req, res, next) => {
@@ -347,10 +383,10 @@ server.listen(port, () => {
     })
 });
 
-// docker stop sends SIGTERM to node (PID 1 in the image): save a pending notepad edit, one line, exit
+// docker stop sends SIGTERM to node (PID 1 in the image): finish the pending saves, one line, exit
 for (const signal of ['SIGTERM', 'SIGINT']) {
     process.once(signal, () => {
-        persistTextNow()
+        persistNow()
         log.info('shutdown', 'stopping', {signal, uptime_s: Math.round(process.uptime())})
         process.exit(0)
     })

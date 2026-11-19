@@ -80,7 +80,7 @@ function recordError(res, err) {
 
 // First middleware: X-Request-Id on every answer, then one line when the answer is done, only if it matters:
 // a 5xx (error, with `err`), a slow answer (warn); anything else at debug; /healthz never above debug.
-function requestLogger(logger = log, now = () => performance.now()) {
+function requestLogger(logger = log, now = () => performance.now(), hide = []) {
     return (req, res, next) => {
         const start = now()
         const reqId = requestId(req.headers['x-request-id'])
@@ -94,7 +94,7 @@ function requestLogger(logger = log, now = () => performance.now()) {
             const failure = failures.get(res)
             if (route === '/healthz') logger.debug('healthz', 'healthz', fields)
             else if (res.statusCode >= 500) logger.error('request_failed', 'server error',
-                failure === undefined ? fields : {...fields, ...errField(failure, [url, url.split('?')[0]])})
+                failure === undefined ? fields : {...fields, ...errField(failure, [url, url.split('?')[0], ...hide])})
             else if (fields.dur_ms > SLOW_MS) logger.warn('request_slow', 'slow request', fields)
             else logger.debug('request', 'request', fields)
         })
