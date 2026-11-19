@@ -9,7 +9,7 @@ Actions): it pins what the shared paste page does today so a Dependabot PR is ju
 # server tests: black-box, spawns `node server.js` (DEV config.json, DATA_DIR in a temp dir)
 docker run --rm -v "$PWD":/src:ro node:26-alpine sh -c \
   'mkdir /a && cd /src && tar --exclude=./node_modules --exclude=./data -cf - . | tar -xf - -C /a && cd /a \
-   && npm ci && node --test --test-reporter=spec test/server.test.js'
+   && npm ci --ignore-scripts && node --test --test-reporter=spec test/server.test.js'
 
 # container smoke (hardened: uid 1000, read-only rootfs, /data volume, restart)
 docker build -t instantshit:smoke . && bash scripts/smoke.sh instantshit:smoke

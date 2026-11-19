@@ -2,7 +2,7 @@ FROM node:26.13.1-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43dd
 
 WORKDIR /
 COPY ./package.json ./package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev --ignore-scripts
 
 COPY . .
 # the image must always run with the production config (port 80, real limits)
