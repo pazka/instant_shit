@@ -76,5 +76,15 @@ cmp -s body.out paste.txt || fail "file lost on restart"
 step "no errors in logs"
 if dk logs "$NAME" 2>&1 | grep -E 'Could not|Error: E[A-Z]+|Uncaught'; then fail "errors in container log"; fi
 
+step "logs: one JSON object per line (startup twice, shutdown on the restart's SIGTERM)"
+dk logs "$NAME" >app.log 2>/dev/null
+dk run --rm -i --entrypoint node "$IMAGE" -e '
+  const lines = require("fs").readFileSync(0, "utf8").split("\n").filter(Boolean).map(l => JSON.parse(l))
+  const n = e => lines.filter(o => o.event === e).length
+  for (const o of lines) for (const k of ["ts", "level", "service", "version", "event", "msg"]) if (!(k in o)) throw new Error("no " + k)
+  if (n("startup") !== 2 || n("shutdown") !== 1 || n("file_uploaded") !== 1) throw new Error("events: " + lines.map(o => o.event))
+  if (lines.some(o => o.service !== "instantshit")) throw new Error("service")
+' <app.log || { cat app.log; fail "container stdout is not the JSON log lines"; }
+
 SMOKE_OK=1
 echo "SMOKE OK ($IMAGE)"

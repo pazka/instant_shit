@@ -82,7 +82,13 @@ served after `docker restart` and after `compose down`/`up`; a 1 GiB upload/down
 - `X-Forwarded-For`: `trust proxy 1` (one hop, as before) — behind Traefik → docker-proxy that hop is the edge.
   Rate limits (15 uploads / 10 min, 30 downloads / min per IP) are deliberate.
 - No authentication by design: anyone with the URL can read and replace the text and the file.
-- Logs: morgan `combined` lines on stdout (raw client IPs, as before); `/healthz` is not logged.
+- Logs (hosh-management AGENTS.md §11): one JSON object per line on stdout (`ts`, `level`, `service`
+  `instantshit`, `version` = release tag, `event`, `msg`). `startup` (port, data dir writable, config variable
+  names without values) and `shutdown` (SIGTERM: a pending notepad save is written first); `file_uploaded` (size
+  only); `request_failed` for a 5xx and `request_slow` above 1 s (`req_id` from `X-Request-Id` or generated and
+  returned, `method`, route template, `status`, `dur_ms`); `upload_failed`, `persist_failed`, `restore_failed`,
+  `healthz_failed` with `err`. Never the paste, a file name, a path, a query string, a socket id or an IP.
+  `LOG_LEVEL` (or `APP_LOG_LEVEL`), default `info`; `debug` adds every request, `/healthz`, socket connects.
 - Image runs as root if no `user:` is given (unchanged); both composes set a non-root user.
 
 ## 6. Cutover from legacy (on-box coordinator; owner where marked)

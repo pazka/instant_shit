@@ -128,6 +128,8 @@ jobs:
           context: .
           load: true
           tags: ghcr.io/pazka/instantshit:candidate
+          # the `version` field of every log line (Dockerfile ARG VERSION)
+          build-args: VERSION=${{ steps.meta.outputs.primary }}
       - name: Node runtime guardrail (CVE-2026-111497, hosh-management#5) - before any push
         run: bash scripts/check-node-version.sh ghcr.io/pazka/instantshit:candidate
       - name: Trivy scan (CRITICAL; blocking unless TRIVY_POLICY=warn)

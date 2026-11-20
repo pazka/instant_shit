@@ -1,4 +1,5 @@
 ﻿fs = require('fs')
+const {log} = require('./log.js')
 
 const envVarRegex = /^\$\{(.*)\}$/
 
@@ -37,7 +38,8 @@ function initConfig(configPath,strict = false) {
 
     // Opening default file
     const data = fs.readFileSync(configPath)
-    console.log("Loading config : ",data)
+    // the file's values are never logged (the startup line lists the variable names only)
+    log.debug('config_loaded', 'config loaded', {file: require('path').basename(configPath)})
     fullConfig = JSON.parse(data)
 
     function __tryParseEnvVarFromConfig(potentialEnvVar) {
@@ -81,7 +83,6 @@ function initConfig(configPath,strict = false) {
     }
 
     if (!Object.keys(fullConfig).includes(fullConfig["ENV"])) {
-        console.error('Unable to set the current environment')
         throw new ReferenceError(`The ${fullConfig["ENV"]} key is not present in the config.json. `)
     }
 
@@ -111,7 +112,7 @@ function getConfig(key = "", defaultVal) {
         }
 
         if (val[key] == null && defaultVal !== undefined) {
-            console.warn(`The value of ${key} was undefined in the config ${configName}, using default val ${defaultVal}`)
+            log.warn('config_default', `The value of ${key} was undefined in the config ${configName}, using the default`, {key})
             val = defaultVal
             return
         }
