@@ -184,6 +184,14 @@ function upload(base, name, bytes, headers = {}) {
     return fetch(base + '/newFile', {method: 'POST', body: form, headers})
 }
 
+// root writes everywhere: the server then runs as nobody (65534), as the image runs as a non-root uid
+const asRoot = typeof process.getuid === 'function' && process.getuid() === 0
+const nobody = asRoot ? {uid: 65534, gid: 65534} : {}
+const giveToNobody = data => { if (asRoot) fs.chownSync(data, 65534, 65534) }
+const hiddenEverywhere = (s, extra = []) => {
+    for (const x of [s.data, 'meta.json', 'currentText.json', 'currentFile', ...extra]) assert.ok(!s.out.includes(x), x)
+}
+
 test('server: startup line (version, port, data dir writable, config names), file_uploaded, shutdown on SIGTERM saves the notepad', async () => {
     const s = startServer(12141, {APP_VERSION: 'v9.8.7', TITLE: 'secret-title-value'})
     try {
@@ -256,6 +264,8 @@ test('server: a failed upload gives upload_failed (err, file name hidden) and re
             ['error', 'req-up-1', 'POST', '/newFile', 500])
         assert.equal(typeof req[0].dur_ms, 'number')
         assert.ok(!s.out.includes('secret-upload-name'), 'file name never logged')
+        assert.match(up[0].err.message, /'<hidden>[^']*'/, 'the path is hidden, not dropped')
+        hiddenEverywhere(s, ['secret-upload-name', 'tmp-'])
         assert.equal(s.err, '')
     } finally {
         await s.stop()
@@ -284,6 +294,62 @@ test('server: unreadable saved state gives restore_failed error lines with err, 
         assert.deepEqual(all, {txt: {time: all.txt.time, val: ''}, file: {time: 0, val: '', size: 0}})
     } finally {
         await s.stop()
+    }
+})
+
+test('server: saved state the server may not read gives restore_failed with the fs error, never a path', async () => {
+    const s = startServer(12152, {}, data => {
+        for (const f of ['meta.json', 'currentText.json']) {
+            fs.writeFileSync(path.join(data, f), '{}')
+            fs.chmodSync(path.join(data, f), 0o000)
+        }
+        giveToNobody(data)
+    }, nobody)
+    try {
+        await s.ready
+        const rf = s.lines().filter(o => o.event === 'restore_failed')
+        assert.deepEqual(rf.map(o => [o.level, o.what]), [['error', 'file_meta'], ['error', 'text']])
+        for (const o of rf) {
+            assert.deepEqual([o.err.type, o.err.code, o.err.message], ['Error', 'EACCES', "EACCES: permission denied, open '<hidden>'"])
+            assert.equal(o.err.stack.split('\n')[0], 'Error: ' + o.err.message)
+        }
+        hiddenEverywhere(s)
+        assert.equal(s.err, '')
+    } finally {
+        await s.stop()
+    }
+})
+
+test('server: corrupted saved state never logs a piece of the paste or the file name (JSON.parse quotes its input)', async () => {
+    const s = startServer(12153, {}, data => {
+        fs.writeFileSync(path.join(data, 'currentText.json'), '{"content": my pin is 4242}')
+        fs.writeFileSync(path.join(data, 'meta.json'), '{"name": secret-holiday.zip}')
+    })
+    let pos
+    try {
+        await s.ready
+        const rf = s.lines().filter(o => o.event === 'restore_failed')
+        assert.deepEqual(rf.map(o => [o.level, o.what]), [['error', 'file_meta'], ['error', 'text']])
+        for (const o of rf) {
+            assert.deepEqual([o.err.type, o.err.message], ['SyntaxError', 'invalid JSON'])
+            assert.match(o.err.stack, /^SyntaxError: invalid JSON\n\s+at /)
+        }
+        for (const x of ['my pin', '4242', 'secret-hol', 'not valid JSON', 'Unexpected token']) {
+            assert.ok(!s.out.includes(x), x)
+            assert.ok(!s.err.includes(x), x)
+        }
+        assert.equal(s.err, '')
+        // V8 errors that give a position keep it (and nothing else)
+        pos = startServer(12154, {}, data => fs.writeFileSync(path.join(data, 'currentText.json'), '{"content":"my pin is 4242'))
+        await pos.ready
+        const t = pos.lines().find(o => o.event === 'restore_failed')
+        assert.deepEqual([t.what, t.err.type], ['text', 'SyntaxError'])
+        assert.match(t.err.message, /^invalid JSON at position \d+$/)
+        assert.ok(!pos.out.includes('4242') && !pos.out.includes('Unterminated'), pos.out)
+        assert.equal(pos.err, '')
+    } finally {
+        await s.stop()
+        if (pos) await pos.stop()
     }
 })
 
@@ -336,14 +402,6 @@ test('server: the startup line says data_dir_writable:false on a read-only data 
     }
 })
 
-// root writes everywhere: the server then runs as nobody (65534), as the image runs as a non-root uid
-const asRoot = typeof process.getuid === 'function' && process.getuid() === 0
-const nobody = asRoot ? {uid: 65534, gid: 65534} : {}
-const giveToNobody = data => { if (asRoot) fs.chownSync(data, 65534, 65534) }
-const hiddenEverywhere = (s, extra = []) => {
-    for (const x of [s.data, 'meta.json', 'currentText.json', 'currentFile', ...extra]) assert.ok(!s.out.includes(x), x)
-}
-
 test('server: SIGTERM during a save (slow disk) loses nothing: notepad and file metadata are written whole', async () => {
     const preload = path.join(__dirname, 'slow-write-preload.js')
     const s = startServer(12146, {NODE_OPTIONS: `--require ${preload}`})
@@ -376,6 +434,66 @@ test('server: SIGTERM during a save (slow disk) loses nothing: notepad and file 
     }
 })
 
+test('server: a crash (SIGKILL) during a save (slow disk) keeps the previous save; the restart restores it, clears the .part', async () => {
+    const preload = path.join(__dirname, 'slow-write-preload.js')
+    const s = startServer(12155, {NODE_OPTIONS: `--require ${preload}`})
+    const file = path.join(s.data, 'currentText.json')
+    let again
+    try {
+        await s.ready
+        const c = new PollClient(s.base)
+        await c.connect()
+        await c.emit('txt_update', {content: {ops: [{insert: 'version one\n'}]}})
+        await sleep(3200) // 2 s timer + 800 ms slow write: v1 is saved
+        assert.deepEqual(JSON.parse(fs.readFileSync(file)).content, {ops: [{insert: 'version one\n'}]})
+        await c.emit('txt_update', {content: {ops: [{insert: 'version two\n'}]}})
+        await c.close()
+        await sleep(2300) // the v2 save is being written (empty for 800 ms)
+        s.proc.kill('SIGKILL')
+        assert.deepEqual(await s.exited, {code: null, signal: 'SIGKILL'})
+        assert.deepEqual(JSON.parse(fs.readFileSync(file)).content, {ops: [{insert: 'version one\n'}]}, 'previous save intact')
+        assert.equal(fs.readdirSync(s.data).filter(f => /^currentText\.json\.\d+-\d+\.part$/.test(f)).length, 1, 'the cut save is a .part')
+
+        again = startServer(12156, {}, data => fs.cpSync(s.data, data, {recursive: true}))
+        await again.ready
+        const all = await (await fetch(again.base + '/all')).json()
+        assert.deepEqual(all.txt.val, {ops: [{insert: 'version one\n'}]})
+        assert.ok(!again.lines().some(o => o.level === 'error'), again.out)
+        assert.deepEqual(fs.readdirSync(again.data).filter(f => f.endsWith('.part')), [])
+    } finally {
+        await s.stop()
+        if (again) await again.stop()
+    }
+})
+
+test('server: a shutdown save that fails mid-write (disk full) keeps the previous save and leaves no .part', async () => {
+    const preload = path.join(__dirname, 'sync-enospc-preload.js')
+    const s = startServer(12157, {NODE_OPTIONS: `--require ${preload}`})
+    const file = path.join(s.data, 'currentText.json')
+    try {
+        await s.ready
+        const c = new PollClient(s.base)
+        await c.connect()
+        await c.emit('txt_update', {content: {ops: [{insert: 'version one\n'}]}})
+        await sleep(2400) // saved by the async save (fs.writeFile is not affected)
+        assert.deepEqual(JSON.parse(fs.readFileSync(file)).content, {ops: [{insert: 'version one\n'}]})
+        await c.emit('txt_update', {content: {ops: [{insert: 'secret version two\n'}]}})
+        await c.close()
+        await sleep(200)
+        s.proc.kill('SIGTERM') // the shutdown writes v2 synchronously: the disk fills up
+        assert.deepEqual(await s.exited, {code: 0, signal: null})
+        assert.deepEqual(JSON.parse(fs.readFileSync(file)).content, {ops: [{insert: 'version one\n'}]}, 'previous save intact')
+        assert.deepEqual(fs.readdirSync(s.data).filter(f => f.endsWith('.part')), [])
+        const lines = s.lines()
+        assert.deepEqual(lines.map(o => o.event), ['startup', 'persist_failed', 'shutdown'])
+        assert.deepEqual([lines[1].what, lines[1].err.code], ['text', 'ENOSPC'])
+        hiddenEverywhere(s, ['secret version'])
+        assert.equal(s.err, '')
+    } finally {
+        await s.stop()
+    }
+})
+
 test('server: a save that fails gives persist_failed (text and file_meta) with err, never a path, file name or paste', async () => {
     const s = startServer(12148)
     try {
@@ -400,6 +518,7 @@ test('server: a save that fails gives persist_failed (text and file_meta) with e
             assert.equal(o.err.stack.split('\n')[0], 'Error: ' + o.err.message)
         }
         hiddenEverywhere(s, ['secret-upload', 'secret paste'])
+        assert.deepEqual(fs.readdirSync(s.data).filter(f => f.endsWith('.part')), [], 'a failed save leaves no .part')
         assert.equal(s.err, '')
     } finally {
         await s.stop()
@@ -424,6 +543,7 @@ test('server: a save that fails on shutdown gives persist_failed (text) with err
         assert.deepEqual([pf.level, pf.what, pf.err.type, pf.err.code], ['error', 'text', 'Error', 'EISDIR'])
         assert.match(pf.err.stack, /^Error: EISDIR: .*\n\s+at /)
         hiddenEverywhere(s, ['secret paste'])
+        assert.deepEqual(fs.readdirSync(s.data).filter(f => f.endsWith('.part')), [], 'a failed save leaves no .part')
     } finally {
         await s.stop()
     }

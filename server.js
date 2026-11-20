@@ -49,6 +49,20 @@ for (const leftover of fs.readdirSync(tmpDirectory)) {
     try { fs.unlinkSync(path.join(tmpDirectory, leftover)) } catch (e) { /* ignore */ }
 }
 
+// Paths never reach the log: an fs error names DATA_DIR files, and the data dir's path is the operator's.
+const hiddenPaths = [path.resolve(dataDirectory),
+    ...[currentFilePath, metaFilePath, textFilePath, tmpDirectory].flatMap(p => [p, path.resolve(p)])]
+const fsErr = err => errField(err, hiddenPaths)
+// A saved file that is not valid JSON: V8's SyntaxError message (and the stack, which repeats it) quotes the
+// start of the input, i.e. the paste or the file name. Only the type and the position are logged.
+function restoreErr(err) {
+    if (!(err instanceof SyntaxError)) return fsErr(err)
+    const at = /\bat position (\d+)/.exec(err.message)
+    const safe = new SyntaxError(at ? `invalid JSON at position ${at[1]}` : 'invalid JSON')
+    safe.stack = String(err.stack || '').split('\n').filter(l => /^\s+at /.test(l)).join('\n')
+    return fsErr(safe)
+}
+
 // ---- persisted state: survives container restarts ----------------------------
 var currentQuillObj = "";
 var currentFileMeta = {name: "", size: 0, mimetype: "", time: 0};
@@ -63,7 +77,7 @@ try {
         currentFileMeta = {name: "restored-file", size: stat.size, mimetype: "application/octet-stream", time: stat.mtimeMs}
     }
 } catch (err) {
-    log.error('restore_failed', 'Could not restore file metadata', {what: 'file_meta', ...errField(err)})
+    log.error('restore_failed', 'Could not restore file metadata', {what: 'file_meta', ...restoreErr(err)})
 }
 
 try {
@@ -73,12 +87,8 @@ try {
         lastTextUpdate = saved.time
     }
 } catch (err) {
-    log.error('restore_failed', 'Could not restore notepad content', {what: 'text', ...errField(err)})
+    log.error('restore_failed', 'Could not restore notepad content', {what: 'text', ...restoreErr(err)})
 }
-
-// Paths never reach the log: an fs error names DATA_DIR files, and the data dir's path is the operator's.
-const hiddenPaths = [path.resolve(dataDirectory), currentFilePath, metaFilePath, textFilePath, path.resolve(currentFilePath)]
-const fsErr = err => errField(err, hiddenPaths)
 
 // A save writes a temporary file next to the target, then renames it over the target: a stop at any moment
 // leaves either the previous save or the new one, never an emptied file.
@@ -361,8 +371,8 @@ app.post('/newFile', async (req, res) => {
             }
         });
     } catch (err) {
-        // the error names DATA_DIR paths only (the upload's own name is never in an fs error)
-        log.error('upload_failed', 'Upload failed', errField(err))
+        // the error names DATA_DIR paths only (the upload's own name is never in an fs error): hidden
+        log.error('upload_failed', 'Upload failed', fsErr(err))
         res.status(500).send({status: false, message: "Upload failed on the server, try again"});
     }
 });

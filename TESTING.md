@@ -47,16 +47,20 @@ dotfile / traversal fallbacks, CORS preflight; `/file` `Content-Disposition` byt
 `?` fallback + `filename*`), HEAD and ranges; draft-6 `RateLimit-*` headers, one bucket per client IP via
 `X-Forwarded-For` (IPv6 addresses not grouped by subnet).
 
-`test/log.test.js` (16 tests): the logging standard (hosh-management AGENTS.md §11), see `DEPLOY.md` §5 "Logs".
+`test/log.test.js` (20 tests): the logging standard (hosh-management AGENTS.md §11), see `DEPLOY.md` §5 "Logs".
 `log.js` unit tests (line format, level filter, `LOG_LEVEL` / `APP_LOG_LEVEL`, `errField`, `requestId`, route
 templates); the request logger on a real Express app (5xx = one `request_failed` error line with `err`, slow =
 `request_slow` warn, the rest and `/healthz` at debug, `X-Request-Id` kept or generated); `server.js` black box:
 the `startup` line (version, port, `data_dir_writable` true, and false on a read-only data dir run as a non-root
 uid, config names without values), `file_uploaded`, `shutdown` on SIGTERM writes a pending notepad edit first
-(exit 0), `upload_failed` + `request_failed` on a failing upload (answer unchanged), `restore_failed` on unreadable
-saved state, a SIGTERM during a save on a slow disk (`test/slow-write-preload.js` delays `fs.writeFile`) keeps
-the notepad and `meta.json` whole (saves write a `.part` file, then rename it), `persist_failed` (text and file
-metadata, async and on shutdown), `healthz_failed` + 503 on an unwritable data dir, `request_failed` with `err`
+(exit 0), `upload_failed` + `request_failed` on a failing upload (answer unchanged, no path), `restore_failed` on
+corrupted saved state (only the error type and the JSON position: V8's message quotes the paste or the file name,
+so a marker in each file must never reach stdout or stderr) and on saved state the server may not read (EACCES,
+no path), a SIGTERM during a save on a slow disk (`test/slow-write-preload.js` delays `fs.writeFile`) keeps
+the notepad and `meta.json` whole (saves write a `.part` file, then rename it), a SIGKILL during a slow save keeps
+the previous save on disk, the restart restores it and removes the `.part`, a shutdown save that fails mid-write
+(`test/sync-enospc-preload.js`: `fs.writeFileSync` empties its file then fails with ENOSPC) keeps the previous
+save, `persist_failed` (text and file metadata, async and on shutdown, no `.part` left behind), `healthz_failed` + 503 on an unwritable data dir, `request_failed` with `err`
 on an error Express answers itself (unreadable download); tests that need a non-root uid run the server as
 nobody (65534) when the suite runs as root (CI's node container), debug lines; stdout is only JSON, stderr stays empty (Express env "test"), and no paste, file name,
 path, query string, socket id or IP is ever logged.
